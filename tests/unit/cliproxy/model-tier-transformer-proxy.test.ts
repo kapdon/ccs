@@ -273,7 +273,7 @@ describe('ModelTierTransformerProxy', () => {
         req.on('end', () => {
           receivedBody = Buffer.concat(chunks).toString();
           res.writeHead(200, { 'content-type': 'application/json' });
-          res.end('{"ok":true}');
+          res.end(JSON.stringify({ model: 'claude-opus-4-5-thinking', content: 'hello' }));
         });
       });
 
@@ -283,9 +283,17 @@ describe('ModelTierTransformerProxy', () => {
       });
       const port = await proxy.start();
 
-      await proxyRequest(port, '/v1/messages', JSON.stringify({ model: 'claude-opus-4-6-thinking' }));
+      const response = await proxyRequest(
+        port,
+        '/v1/messages',
+        JSON.stringify({ model: 'claude-opus-4-6-thinking' })
+      );
       const parsed = JSON.parse(receivedBody);
       expect(parsed.model).toBe('claude-opus-4-5-thinking');
+
+      // Response model should be rewritten back to opus-4-6
+      const resBody = JSON.parse(response.body);
+      expect(resBody.model).toBe('claude-opus-4-6-thinking');
     });
 
     it('should pass through non-matching model unchanged', async () => {
@@ -360,6 +368,177 @@ describe('ModelTierTransformerProxy', () => {
     });
   });
 
+  describe('handleApiRequest — SSE response model rewriting', () => {
+    it('should rewrite model name in SSE message_start event', async () => {
+      upstream = await createUpstreamMock((_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        // message_start with fallback model name
+        res.write(
+          'event: message_start\n' +
+            'data: ' +
+            JSON.stringify({
+              type: 'message_start',
+              message: {
+                id: 'msg_123',
+                type: 'message',
+                role: 'assistant',
+                model: 'claude-opus-4-5-thinking',
+                content: [],
+              },
+            }) +
+            '\n\n'
+        );
+        // content delta — no model field
+        res.write(
+          'event: content_block_delta\n' +
+            'data: ' +
+            JSON.stringify({
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: 'Hello' },
+            }) +
+            '\n\n'
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+      });
+
+      proxy = new ModelTierTransformerProxy({
+        fallbackMap: DEFAULT_FALLBACK,
+        upstreamBaseUrl: `http://127.0.0.1:${upstream.port}`,
+      });
+      const port = await proxy.start();
+
+      const response = await proxyRequest(
+        port,
+        '/v1/messages',
+        JSON.stringify({ model: 'claude-opus-4-6-thinking', stream: true })
+      );
+
+      // Parse SSE events from response
+      const events = response.body
+        .split('\n\n')
+        .filter((e) => e.trim())
+        .map((e) => {
+          const dataLine = e.split('\n').find((l) => l.startsWith('data: '));
+          if (!dataLine) return null;
+          const json = dataLine.slice(6);
+          if (json === '[DONE]') return { type: 'done' };
+          try {
+            return JSON.parse(json);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+
+      // message_start model should be rewritten to opus-4-6
+      const msgStart = events.find((e: Record<string, unknown>) => e.type === 'message_start');
+      expect(msgStart).toBeDefined();
+      expect((msgStart as Record<string, Record<string, string>>).message.model).toBe(
+        'claude-opus-4-6-thinking'
+      );
+
+      // content_block_delta should pass through unchanged
+      const delta = events.find((e: Record<string, unknown>) => e.type === 'content_block_delta');
+      expect(delta).toBeDefined();
+    });
+
+    it('should not rewrite SSE events when model was not rewritten in request', async () => {
+      upstream = await createUpstreamMock((_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.write(
+          'event: message_start\n' +
+            'data: ' +
+            JSON.stringify({
+              type: 'message_start',
+              message: { id: 'msg_456', model: 'claude-sonnet-4-5', content: [] },
+            }) +
+            '\n\n'
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+      });
+
+      proxy = new ModelTierTransformerProxy({
+        fallbackMap: DEFAULT_FALLBACK,
+        upstreamBaseUrl: `http://127.0.0.1:${upstream.port}`,
+      });
+      const port = await proxy.start();
+
+      const response = await proxyRequest(
+        port,
+        '/v1/messages',
+        JSON.stringify({ model: 'claude-sonnet-4-5', stream: true })
+      );
+
+      // Should pipe through untouched (forwardAndPipe, not forwardAndRewriteModel)
+      expect(response.body).toContain('claude-sonnet-4-5');
+    });
+
+    it('should rewrite model in non-streaming JSON response when model was rewritten', async () => {
+      upstream = await createUpstreamMock((_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            id: 'msg_789',
+            model: 'claude-opus-4-5-thinking',
+            content: [{ type: 'text', text: 'Hi' }],
+          })
+        );
+      });
+
+      proxy = new ModelTierTransformerProxy({
+        fallbackMap: DEFAULT_FALLBACK,
+        upstreamBaseUrl: `http://127.0.0.1:${upstream.port}`,
+      });
+      const port = await proxy.start();
+
+      const response = await proxyRequest(
+        port,
+        '/v1/messages',
+        JSON.stringify({ model: 'claude-opus-4-6-thinking' })
+      );
+      const body = JSON.parse(response.body);
+      expect(body.model).toBe('claude-opus-4-6-thinking');
+      expect(body.content[0].text).toBe('Hi');
+    });
+
+    it('should track responseRewrites in stats', async () => {
+      upstream = await createUpstreamMock((req, res) => {
+        const url = req.url ?? '';
+        if (url.endsWith('/fetchAvailableModels')) {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ models: {} }));
+        } else {
+          const chunks: Buffer[] = [];
+          req.on('data', (c: Buffer) => chunks.push(c));
+          req.on('end', () => {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ model: 'claude-opus-4-5-thinking', ok: true }));
+          });
+        }
+      });
+
+      proxy = new ModelTierTransformerProxy({
+        fallbackMap: DEFAULT_FALLBACK,
+        upstreamBaseUrl: `http://127.0.0.1:${upstream.port}`,
+      });
+      const port = await proxy.start();
+
+      // Trigger response rewrite
+      await proxyRequest(
+        port,
+        '/v1/messages',
+        JSON.stringify({ model: 'claude-opus-4-6-thinking' })
+      );
+
+      const statsRes = await proxyRequest(port, '/__ccs/transformer', '', 'GET');
+      const stats = JSON.parse(statsRes.body).stats;
+      expect(stats.responseRewrites).toBe(1);
+    });
+  });
+
   describe('URL path matching', () => {
     it('should match fetchAvailableModels at end of path', async () => {
       upstream = await createUpstreamMock((_req, res) => {
@@ -406,7 +585,7 @@ describe('ModelTierTransformerProxy', () => {
   });
 
   describe('stats tracking', () => {
-    it('should track injection and rewrite stats', async () => {
+    it('should track injection, rewrite, responseRewrite, and passthrough stats', async () => {
       upstream = await createUpstreamMock((req, res) => {
         const url = req.url ?? '';
         if (url.endsWith('/fetchAvailableModels')) {
@@ -416,8 +595,9 @@ describe('ModelTierTransformerProxy', () => {
           const chunks: Buffer[] = [];
           req.on('data', (c: Buffer) => chunks.push(c));
           req.on('end', () => {
+            const body = JSON.parse(Buffer.concat(chunks).toString());
             res.writeHead(200, { 'content-type': 'application/json' });
-            res.end('{"ok":true}');
+            res.end(JSON.stringify({ model: body.model, ok: true }));
           });
         }
       });
@@ -430,7 +610,7 @@ describe('ModelTierTransformerProxy', () => {
 
       // Trigger model list injection
       await proxyRequest(port, '/v1/fetchAvailableModels', '{}');
-      // Trigger model rewrite
+      // Trigger model rewrite + response rewrite
       await proxyRequest(port, '/v1/messages', JSON.stringify({ model: 'claude-opus-4-6-thinking' }));
       // Trigger passthrough
       await proxyRequest(port, '/v1/messages', JSON.stringify({ model: 'claude-sonnet-4-5' }));
@@ -439,6 +619,7 @@ describe('ModelTierTransformerProxy', () => {
       const stats = JSON.parse(statsRes.body).stats;
       expect(stats.modelListInjections).toBe(1);
       expect(stats.modelRewrites).toBe(1);
+      expect(stats.responseRewrites).toBe(1);
       expect(stats.passThrough).toBe(1);
     });
   });

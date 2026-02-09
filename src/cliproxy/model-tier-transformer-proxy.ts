@@ -15,6 +15,7 @@ import { URL } from 'url';
 import {
   buildForwardHeaders,
   forwardAndBuffer,
+  forwardAndRewriteModel,
   forwardAndPipe,
   readRequestBody,
 } from './transformer-proxy-forwarding';
@@ -34,13 +35,19 @@ export class ModelTierTransformerProxy {
   private server: http.Server | null = null;
   private port: number | null = null;
   private readonly fallbackMap: Record<string, string>;
+  /** Reverse map: fallback model → original model (for response rewriting) */
+  private readonly reverseMap: Record<string, string>;
   private readonly upstreamBaseUrl: string;
   private readonly verbose: boolean;
   private readonly timeoutMs: number;
-  private stats = { modelListInjections: 0, modelRewrites: 0, passThrough: 0 };
+  private stats = { modelListInjections: 0, modelRewrites: 0, responseRewrites: 0, passThrough: 0 };
 
   constructor(config: ModelTierTransformerConfig) {
     this.fallbackMap = config.fallbackMap;
+    this.reverseMap = {};
+    for (const [ultra, fallback] of Object.entries(config.fallbackMap)) {
+      this.reverseMap[fallback] = ultra;
+    }
     this.upstreamBaseUrl = config.upstreamBaseUrl;
     this.verbose = config.verbose ?? false;
     this.timeoutMs = config.timeoutMs ?? 120000;
@@ -163,23 +170,24 @@ export class ModelTierTransformerProxy {
     res.end(upstream.body);
   }
 
-  /** Rewrite model name in request body, pipe response (SSE streaming safe) */
+  /** Rewrite model name in request body; rewrite response model name back for client */
   private async handleApiRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse
   ): Promise<void> {
     const rawBody = await readRequestBody(req);
     let forwardBody = rawBody;
+    let rewrittenFrom: string | null = null;
 
     try {
       const parsed: unknown = JSON.parse(rawBody);
       if (parsed && typeof parsed === 'object' && 'model' in parsed) {
         const obj = parsed as { model: string };
         if (typeof obj.model === 'string' && this.fallbackMap[obj.model]) {
-          const original = obj.model;
+          rewrittenFrom = obj.model;
           obj.model = this.fallbackMap[obj.model];
           this.stats.modelRewrites++;
-          this.log(`Rewrite model: ${original} -> ${obj.model}`);
+          this.log(`Rewrite model: ${rewrittenFrom} -> ${obj.model}`);
           forwardBody = JSON.stringify(parsed);
         } else {
           this.stats.passThrough++;
@@ -191,14 +199,33 @@ export class ModelTierTransformerProxy {
 
     const upstreamUrl = new URL(req.url ?? '/', this.upstreamBaseUrl);
     const headers = buildForwardHeaders(req.headers, forwardBody, { stripAcceptEncoding: false });
-    await forwardAndPipe(
-      upstreamUrl,
-      req.method ?? 'POST',
-      headers,
-      forwardBody,
-      res,
-      this.timeoutMs
-    );
+
+    if (rewrittenFrom) {
+      // Model was rewritten — rewrite response model name back so CC accepts it
+      const fallbackModel = this.fallbackMap[rewrittenFrom];
+      this.log(`Response rewrite: ${fallbackModel} -> ${rewrittenFrom}`);
+      await forwardAndRewriteModel(
+        upstreamUrl,
+        req.method ?? 'POST',
+        headers,
+        forwardBody,
+        res,
+        this.timeoutMs,
+        { from: fallbackModel, to: rewrittenFrom },
+        (msg: string) => this.log(msg)
+      );
+      this.stats.responseRewrites++;
+    } else {
+      // No rewrite — pipe through untouched
+      await forwardAndPipe(
+        upstreamUrl,
+        req.method ?? 'POST',
+        headers,
+        forwardBody,
+        res,
+        this.timeoutMs
+      );
+    }
   }
 
   private log(msg: string): void {

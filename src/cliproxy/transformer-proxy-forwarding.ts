@@ -198,3 +198,205 @@ export function forwardAndPipe(
     upstreamReq.end();
   });
 }
+
+/** Model rewrite mapping for response transformation */
+export interface ModelRewrite {
+  /** Model name to find in response (the fallback model sent upstream) */
+  from: string;
+  /** Model name to replace with (the original model the client requested) */
+  to: string;
+}
+
+/**
+ * Rewrite a single SSE event's data line, replacing the model name
+ * in message_start events. Non-data lines and other events pass through unchanged.
+ */
+function rewriteSSEEvent(event: string, rewrite: ModelRewrite): string {
+  const lines = event.split('\n');
+  const processed: string[] = [];
+
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) {
+      processed.push(line);
+      continue;
+    }
+
+    const jsonStr = line.slice(6);
+    if (jsonStr.trim() === '[DONE]') {
+      processed.push(line);
+      continue;
+    }
+
+    try {
+      const data = JSON.parse(jsonStr);
+
+      // message_start: rewrite message.model
+      if (
+        data &&
+        typeof data === 'object' &&
+        data.type === 'message_start' &&
+        data.message &&
+        typeof data.message.model === 'string' &&
+        data.message.model === rewrite.from
+      ) {
+        data.message.model = rewrite.to;
+        processed.push('data: ' + JSON.stringify(data));
+        continue;
+      }
+
+      // message_delta final usage may echo model — rewrite if present
+      if (
+        data &&
+        typeof data === 'object' &&
+        typeof data.model === 'string' &&
+        data.model === rewrite.from
+      ) {
+        data.model = rewrite.to;
+        processed.push('data: ' + JSON.stringify(data));
+        continue;
+      }
+
+      // No match — pass through unchanged
+      processed.push(line);
+    } catch {
+      // Not valid JSON — pass through
+      processed.push(line);
+    }
+  }
+
+  return processed.join('\n');
+}
+
+/**
+ * Forward request to upstream with SSE-aware response model rewriting.
+ *
+ * Follows the tool-sanitization-proxy SSE pattern: split on '\n\n' boundaries,
+ * parse data lines, rewrite the model name in message_start events, forward
+ * everything else unchanged. Handles both SSE and non-streaming JSON responses.
+ */
+export function forwardAndRewriteModel(
+  upstreamUrl: URL,
+  method: string,
+  headers: Record<string, string>,
+  body: string,
+  clientRes: http.ServerResponse,
+  timeoutMs: number,
+  rewrite: ModelRewrite,
+  log?: (msg: string) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const isHttp = upstreamUrl.protocol === 'http:';
+    const transport = isHttp ? http : https;
+    const upstreamReq = transport.request(
+      {
+        hostname: upstreamUrl.hostname,
+        port: upstreamUrl.port || (isHttp ? 80 : 443),
+        path: upstreamUrl.pathname + upstreamUrl.search,
+        method,
+        headers,
+        timeout: timeoutMs,
+      },
+      (upstreamRes) => {
+        const contentType = upstreamRes.headers['content-type'] || '';
+        const isSSE = contentType.includes('text/event-stream');
+
+        if (!isSSE) {
+          // Non-streaming JSON response — buffer, rewrite model, forward
+          const chunks: Buffer[] = [];
+          upstreamRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+          upstreamRes.on('end', () => {
+            try {
+              const raw = Buffer.concat(chunks).toString('utf-8');
+              const data = JSON.parse(raw);
+              if (
+                data &&
+                typeof data === 'object' &&
+                typeof data.model === 'string' &&
+                data.model === rewrite.from
+              ) {
+                data.model = rewrite.to;
+                log?.(`Response model rewritten (JSON): ${rewrite.from} -> ${rewrite.to}`);
+              }
+              const modified = JSON.stringify(data);
+              const {
+                'content-encoding': _ce,
+                'content-length': _cl,
+                ...cleanHeaders
+              } = upstreamRes.headers as Record<string, string>;
+              clientRes.writeHead(upstreamRes.statusCode ?? 200, {
+                ...cleanHeaders,
+                'content-length': String(Buffer.byteLength(modified)),
+              });
+              clientRes.end(modified);
+            } catch {
+              // Parse failed — forward raw
+              clientRes.writeHead(upstreamRes.statusCode ?? 200, upstreamRes.headers);
+              clientRes.end(Buffer.concat(chunks));
+            }
+            resolve();
+          });
+          upstreamRes.on('error', reject);
+          return;
+        }
+
+        // SSE streaming — rewrite model in events, forward immediately
+        clientRes.writeHead(upstreamRes.statusCode ?? 200, upstreamRes.headers);
+
+        let buffer = '';
+        let rewritten = false;
+
+        upstreamRes.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf8');
+
+          // Split on SSE event boundaries
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || ''; // Keep incomplete event
+
+          for (const event of events) {
+            if (!event.trim()) continue;
+
+            const processed = rewriteSSEEvent(event, rewrite);
+            if (!rewritten && processed !== event) {
+              rewritten = true;
+              log?.(`Response model rewritten (SSE): ${rewrite.from} -> ${rewrite.to}`);
+            }
+            clientRes.write(processed + '\n\n');
+          }
+        });
+
+        upstreamRes.on('end', () => {
+          try {
+            if (buffer.trim()) {
+              const processed = rewriteSSEEvent(buffer, rewrite);
+              clientRes.write(processed + '\n\n');
+            }
+            clientRes.end();
+          } catch {
+            // Client may have disconnected
+          }
+          resolve();
+        });
+
+        upstreamRes.on('error', reject);
+
+        // Clean up upstream if client disconnects mid-stream
+        clientRes.on('close', () => {
+          if (!upstreamRes.complete) {
+            upstreamRes.destroy();
+          }
+        });
+      }
+    );
+
+    upstreamReq.on('timeout', () => upstreamReq.destroy(new Error('Upstream timeout')));
+    upstreamReq.on('error', (err) => {
+      if (!clientRes.headersSent) {
+        clientRes.writeHead(502, { 'Content-Type': 'text/plain' });
+        clientRes.end('Upstream error');
+      }
+      reject(err);
+    });
+    upstreamReq.write(body);
+    upstreamReq.end();
+  });
+}
