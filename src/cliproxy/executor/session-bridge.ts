@@ -22,7 +22,7 @@ import { detectRunningProxy, waitForProxyHealthy, reclaimOrphanedProxy } from '.
 import { withStartupLock } from '../startup-lock';
 import { killProcessOnPort } from '../../utils/platform-commands';
 import { cleanupTransformerShadowAuthDir } from '../shadow-auth-builder';
-import { regenerateConfig, deleteConfigForPort } from '../config-generator';
+import { regenerateConfig, deleteConfigForPort } from '../config/generator';
 
 export interface ProxySessionResult {
   sessionId?: string;

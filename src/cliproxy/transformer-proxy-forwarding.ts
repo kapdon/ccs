@@ -24,6 +24,9 @@ const HOP_BY_HOP_HEADERS = new Set([
 /** Maximum request body size (50MB) — defensive limit for localhost proxy */
 const MAX_BODY_SIZE = 50 * 1024 * 1024;
 
+/** Maximum response body size (10MB) — model list responses are typically <50KB */
+const MAX_RESPONSE_SIZE = 10 * 1024 * 1024;
+
 /**
  * Read full request body as a string.
  * Rejects with 413 if body exceeds MAX_BODY_SIZE.
@@ -52,11 +55,15 @@ export function readRequestBody(req: http.IncomingMessage): Promise<string> {
 /**
  * Build headers to forward to upstream.
  * Strips hop-by-hop headers, recalculates content-length.
+ * @param options.stripAcceptEncoding Strip accept-encoding header (default: true).
+ *   Set to false for streaming paths where compressed bytes are piped directly.
  */
 export function buildForwardHeaders(
   originalHeaders: http.IncomingHttpHeaders,
-  body: string
+  body: string,
+  options?: { stripAcceptEncoding?: boolean }
 ): Record<string, string> {
+  const stripEncoding = options?.stripAcceptEncoding ?? true;
   const headers: Record<string, string> = {};
   for (const [key, value] of Object.entries(originalHeaders)) {
     if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
@@ -64,7 +71,7 @@ export function buildForwardHeaders(
     if (key.toLowerCase() === 'content-length') continue;
     // Strip accept-encoding to prevent gzip responses in buffered path
     // (forwardAndBuffer parses response as UTF-8 string, gzip bytes would corrupt JSON)
-    if (key.toLowerCase() === 'accept-encoding') continue;
+    if (stripEncoding && key.toLowerCase() === 'accept-encoding') continue;
     if (value !== undefined) {
       headers[key] = Array.isArray(value) ? value.join(', ') : value;
     }
@@ -103,7 +110,15 @@ export function forwardAndBuffer(
       },
       (upstreamRes) => {
         const chunks: Buffer[] = [];
-        upstreamRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+        let totalSize = 0;
+        upstreamRes.on('data', (chunk: Buffer) => {
+          totalSize += chunk.length;
+          if (totalSize > MAX_RESPONSE_SIZE) {
+            upstreamRes.destroy(new Error('Response body too large'));
+            return;
+          }
+          chunks.push(chunk);
+        });
         upstreamRes.on('end', () => {
           const responseHeaders: Record<string, string> = {};
           for (const [key, value] of Object.entries(upstreamRes.headers)) {

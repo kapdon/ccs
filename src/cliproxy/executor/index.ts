@@ -58,11 +58,12 @@ import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { HttpsTunnelProxy } from '../https-tunnel-proxy';
 import { ModelTierTransformerProxy } from '../model-tier-transformer-proxy';
 import { createTransformerShadowAuthDir } from '../shadow-auth-builder';
+import { stopProxy } from '../session-tracker';
 import { ANTIGRAVITY_API_BASE } from '../quota-fetcher';
 import { DEFAULT_AUTO_QUOTA_CONFIG } from '../../config/unified-config-types';
 
 // Import modular components
-import { waitForProxyReadyWithSpinner, spawnProxy } from './lifecycle-manager';
+import { waitForProxyReadyWithSpinner, spawnProxy, isPortAvailable } from './lifecycle-manager';
 import { buildClaudeEnvironment, logEnvironment } from './env-resolver';
 import {
   isNetworkError,
@@ -608,11 +609,11 @@ export async function execClaudeWithCLIProxy(
     // If transformer is active and proxy was already running, force restart
     // to pick up the new auth-dir with shadow injection
     if (transformerAuthDir && !shouldSpawn && sessionId) {
-      log('Restarting proxy to apply transformer auth dir');
-      const { stopProxy } = await import('../session-tracker');
+      warn(
+        'Restarting proxy to apply tier transformer — other active CCS sessions may be briefly interrupted'
+      );
       await stopProxy(cfg.port);
       // Wait for port to be released (check availability with retry)
-      const { isPortAvailable } = await import('./lifecycle-manager');
       for (let i = 0; i < 25; i++) {
         if (await isPortAvailable(cfg.port)) break;
         await new Promise((r) => setTimeout(r, 200));

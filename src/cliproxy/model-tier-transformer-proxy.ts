@@ -91,7 +91,7 @@ export class ModelTierTransformerProxy {
       return;
     }
 
-    if (requestPath.includes('fetchAvailableModels')) {
+    if (requestPath.endsWith('/fetchAvailableModels')) {
       await this.handleModelListRequest(req, res);
     } else {
       await this.handleApiRequest(req, res);
@@ -188,7 +188,7 @@ export class ModelTierTransformerProxy {
     }
 
     const upstreamUrl = new URL(req.url ?? '/', this.upstreamBaseUrl);
-    const headers = buildForwardHeaders(req.headers, forwardBody);
+    const headers = buildForwardHeaders(req.headers, forwardBody, { stripAcceptEncoding: false });
     await forwardAndPipe(
       upstreamUrl,
       req.method ?? 'POST',
