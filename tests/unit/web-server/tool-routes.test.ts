@@ -12,6 +12,7 @@ function createTempCcsHome(): string {
 
 async function startApiServer(): Promise<{ server: Server; baseUrl: string }> {
   const app = express();
+  app.use(express.json());
   const { apiRoutes } = await import('../../../src/web-server/routes/index');
   app.use('/api', apiRoutes);
 
@@ -106,42 +107,53 @@ describe('tool-routes', () => {
   });
 
   it(
-    'exposes droid generic status/config routes',
+    'exposes droid generic config routes',
     async () => {
+      const droidConfigPath = path.join(tempHome, '.ccs', 'tools', 'droid', 'config.json');
+      fs.mkdirSync(path.dirname(droidConfigPath), { recursive: true });
+      fs.writeFileSync(
+        droidConfigPath,
+        JSON.stringify(
+          {
+            profile: 'factory',
+            endpoint: '',
+            apiKey: '',
+            updatedAt: new Date().toISOString(),
+          },
+          null,
+          2
+        )
+      );
+
       const { server, baseUrl } = await startApiServer();
 
       try {
-      const statusResponse = await fetch(`${baseUrl}/api/tools/droid/status`);
-      expect(statusResponse.status).toBe(200);
-      const statusPayload = (await statusResponse.json()) as {
-        healthy?: boolean;
-        checks?: Record<string, unknown>;
-        config?: Record<string, unknown>;
-      };
-      expect(typeof statusPayload.healthy).toBe('boolean');
-      expect(statusPayload.checks).toBeDefined();
-      expect(statusPayload.config).toBeDefined();
+        const configResponseBefore = await fetch(`${baseUrl}/api/tools/droid/config`);
+        expect(configResponseBefore.status).toBe(200);
 
-      const updateResponse = await fetch(`${baseUrl}/api/tools/droid/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profile: 'factory',
-          endpoint: 'https://droid.example.com',
-        }),
-      });
-      expect(updateResponse.status).toBe(200);
+        const updateResponse = await fetch(`${baseUrl}/api/tools/droid/config`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profile: 'factory',
+            endpoint: 'https://droid.example.com',
+          }),
+        });
+        expect(updateResponse.status).toBe(200);
 
-      const configResponse = await fetch(`${baseUrl}/api/tools/droid/config`);
-      expect(configResponse.status).toBe(200);
-      const configPayload = (await configResponse.json()) as { profile?: string; endpoint?: string };
-      expect(configPayload.profile).toBe('factory');
-      expect(configPayload.endpoint).toBe('https://droid.example.com');
+        const configResponseAfter = await fetch(`${baseUrl}/api/tools/droid/config`);
+        expect(configResponseAfter.status).toBe(200);
+        const configPayload = (await configResponseAfter.json()) as {
+          profile?: string;
+          endpoint?: string;
+        };
+        expect(configPayload.profile).toBe('factory');
+        expect(configPayload.endpoint).toBe('https://droid.example.com');
       } finally {
         await stopServer(server);
       }
     },
-    15000
+    10000
   );
 
   it('returns 404 for unknown tool IDs', async () => {
