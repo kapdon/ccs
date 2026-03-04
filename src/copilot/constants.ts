@@ -41,3 +41,27 @@ export function normalizeCopilotSubcommand(token?: string): string | undefined {
   const alias = COPILOT_FLAG_ALIASES[token as keyof typeof COPILOT_FLAG_ALIASES];
   return alias || token;
 }
+
+export function isCopilotSubcommandToken(token?: string): boolean {
+  return Boolean(token) && COPILOT_SUBCOMMAND_TOKENS.includes(token as string);
+}
+
+/**
+ * Detect likely mistyped copilot flag aliases (e.g. `--statu`).
+ * This helps entrypoint routing show command help instead of falling through
+ * to profile execution for obvious copilot-command typos.
+ */
+export function isLikelyCopilotFlagAlias(token?: string): boolean {
+  if (!token || !token.startsWith('--') || token === '--') {
+    return false;
+  }
+
+  const alias = token.slice(2).toLowerCase();
+  if (!/^[a-z][a-z0-9-]*$/.test(alias)) {
+    return false;
+  }
+
+  return COPILOT_SUBCOMMANDS.some(
+    (subcommand) => subcommand.startsWith(alias) || alias.startsWith(subcommand)
+  );
+}

@@ -30,7 +30,7 @@ import { getGlobalEnvConfig } from './config/unified-config-loader';
 import { ensureProfileHooks as ensureImageAnalyzerHooks } from './utils/hooks/image-analyzer-profile-hook-injector';
 import { getImageAnalysisHookEnv } from './utils/hooks';
 import { fail, info, warn } from './utils/ui';
-import { COPILOT_SUBCOMMAND_TOKENS } from './copilot/constants';
+import { isCopilotSubcommandToken, isLikelyCopilotFlagAlias } from './copilot/constants';
 
 // Import centralized error handling
 import { handleError, runCleanup } from './errors';
@@ -573,12 +573,19 @@ async function main(): Promise<void> {
   }
 
   // Special case: copilot command (GitHub Copilot integration)
-  // Only route to command handler for known subcommands, otherwise treat as profile
-  if (firstArg === 'copilot' && args.length > 1 && COPILOT_SUBCOMMAND_TOKENS.includes(args[1])) {
-    // `ccs copilot <subcommand>` - route to copilot command handler
-    const { handleCopilotCommand } = await import('./commands/copilot-command');
-    const exitCode = await handleCopilotCommand(args.slice(1));
-    process.exit(exitCode);
+  // Route known subcommands and likely mistyped aliases (`--statu`) to command handler.
+  // Non-command Claude args still pass through profile flow.
+  if (firstArg === 'copilot' && args.length > 1) {
+    const copilotToken = args[1];
+    const shouldRouteToCopilotCommand =
+      isCopilotSubcommandToken(copilotToken) ||
+      (args.length === 2 && isLikelyCopilotFlagAlias(copilotToken));
+
+    if (shouldRouteToCopilotCommand) {
+      const { handleCopilotCommand } = await import('./commands/copilot-command');
+      const exitCode = await handleCopilotCommand(args.slice(1));
+      process.exit(exitCode);
+    }
   }
 
   // First-time install: offer setup wizard for interactive users
@@ -955,7 +962,8 @@ async function main(): Promise<void> {
       const exitCode = await executeCopilotProfile(
         copilotConfig,
         remainingArgs,
-        continuityInheritance.claudeConfigDir
+        continuityInheritance.claudeConfigDir,
+        claudeCli
       );
       process.exit(exitCode);
     } else if (profileInfo.type === 'settings') {

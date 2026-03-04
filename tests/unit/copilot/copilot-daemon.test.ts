@@ -4,7 +4,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { spawn } from 'child_process';
-import { isDaemonRunning, stopDaemon } from '../../../src/copilot/copilot-daemon';
+import { isDaemonRunning, startDaemon, stopDaemon } from '../../../src/copilot/copilot-daemon';
+import { DEFAULT_COPILOT_CONFIG } from '../../../src/config/unified-config-types';
 import { getCcsDir } from '../../../src/utils/config-manager';
 
 const activeServers: http.Server[] = [];
@@ -58,7 +59,18 @@ async function createServer(
   return address.port;
 }
 
+function writeCopilotPortConfig(port: number): void {
+  const configPath = path.join(getCcsDir(), 'config.yaml');
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, `version: 8\ncopilot:\n  port: ${port}\n`);
+}
+
 describe('copilot daemon health detection', () => {
+  it('returns false for invalid port inputs', async () => {
+    expect(await isDaemonRunning(0)).toBe(false);
+    expect(await isDaemonRunning(65536)).toBe(false);
+  });
+
   it('returns false when no daemon is running on port', async () => {
     const running = await isDaemonRunning(19998);
     expect(running).toBe(false);
@@ -103,10 +115,26 @@ describe('copilot daemon health detection', () => {
     const running = await isDaemonRunning(port);
     expect(running).toBe(false);
   });
+
+  it('fails fast when startDaemon is called with invalid port', async () => {
+    const result = await startDaemon({
+      ...DEFAULT_COPILOT_CONFIG,
+      port: 70000,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid Copilot daemon port');
+  });
 });
 
 describe('copilot daemon stop safety', () => {
-  it('does not terminate unrelated process from stale PID file', async () => {
+  it('returns failure when stale PID points to unrelated process but daemon is still live', async () => {
+    const port = await createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('Server running');
+    });
+
+    writeCopilotPortConfig(port);
+
     const unrelatedProcess = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000);'], {
       detached: true,
       stdio: 'ignore',
@@ -125,9 +153,42 @@ describe('copilot daemon stop safety', () => {
 
     try {
       const result = await stopDaemon();
-      if (!result.success) {
-        expect(result.error).toContain('unable to verify daemon ownership');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('daemon is still responding on port');
+
+      // Unrelated process should still be alive.
+      expect(() => process.kill(unrelatedPid, 0)).not.toThrow();
+    } finally {
+      try {
+        process.kill(unrelatedPid, 'SIGTERM');
+      } catch {
+        // Process already exited.
       }
+    }
+  });
+
+  it('does not terminate unrelated process from stale PID file', async () => {
+    writeCopilotPortConfig(65534);
+
+    const unrelatedProcess = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000);'], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    unrelatedProcess.unref();
+
+    const unrelatedPid = unrelatedProcess.pid;
+    expect(unrelatedPid).toBeDefined();
+    if (!unrelatedPid) {
+      throw new Error('Failed to spawn unrelated process');
+    }
+
+    const pidFile = path.join(getCcsDir(), 'copilot', 'daemon.pid');
+    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+    fs.writeFileSync(pidFile, String(unrelatedPid));
+
+    try {
+      const result = await stopDaemon();
+      expect(result.success).toBe(true);
 
       // Unrelated process should still be alive.
       expect(() => process.kill(unrelatedPid, 0)).not.toThrow();

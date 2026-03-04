@@ -27,6 +27,18 @@ const router = Router();
 // Mount settings sub-routes
 router.use('/settings', copilotSettingsRoutes);
 
+function parseRequiredModel(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseOptionalModel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 /**
  * GET /api/copilot/status - Get Copilot status (auth + daemon + install info)
  */
@@ -75,31 +87,133 @@ router.get('/config', (_req: Request, res: Response): void => {
 router.put('/config', (req: Request, res: Response): void => {
   try {
     const updates = req.body;
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+      res.status(400).json({ error: 'Request body must be a JSON object' });
+      return;
+    }
+    const payload = updates as Record<string, unknown>;
+
+    if ('port' in payload) {
+      if (typeof payload.port !== 'number' || !Number.isInteger(payload.port)) {
+        res.status(400).json({ error: 'port must be an integer' });
+        return;
+      }
+      if (payload.port < 1 || payload.port > 65535) {
+        res.status(400).json({ error: 'port must be between 1 and 65535' });
+        return;
+      }
+    }
+
+    if ('enabled' in payload && typeof payload.enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled must be a boolean' });
+      return;
+    }
+
+    if ('auto_start' in payload && typeof payload.auto_start !== 'boolean') {
+      res.status(400).json({ error: 'auto_start must be a boolean' });
+      return;
+    }
+
+    if ('wait_on_limit' in payload && typeof payload.wait_on_limit !== 'boolean') {
+      res.status(400).json({ error: 'wait_on_limit must be a boolean' });
+      return;
+    }
+
+    if (
+      'account_type' in payload &&
+      payload.account_type !== 'individual' &&
+      payload.account_type !== 'business' &&
+      payload.account_type !== 'enterprise'
+    ) {
+      res.status(400).json({ error: 'account_type must be individual, business, or enterprise' });
+      return;
+    }
+
+    if ('rate_limit' in payload) {
+      if (payload.rate_limit !== null) {
+        if (typeof payload.rate_limit !== 'number' || !Number.isInteger(payload.rate_limit)) {
+          res.status(400).json({ error: 'rate_limit must be an integer or null' });
+          return;
+        }
+        if (payload.rate_limit < 0) {
+          res.status(400).json({ error: 'rate_limit must be >= 0 or null' });
+          return;
+        }
+      }
+    }
+
+    const normalizedModel = parseRequiredModel(payload.model);
+    if ('model' in payload && !normalizedModel) {
+      res.status(400).json({ error: 'model must be a non-empty string' });
+      return;
+    }
+
+    if (
+      'opus_model' in payload &&
+      payload.opus_model !== undefined &&
+      payload.opus_model !== null &&
+      typeof payload.opus_model !== 'string'
+    ) {
+      res.status(400).json({ error: 'opus_model must be a string' });
+      return;
+    }
+
+    if (
+      'sonnet_model' in payload &&
+      payload.sonnet_model !== undefined &&
+      payload.sonnet_model !== null &&
+      typeof payload.sonnet_model !== 'string'
+    ) {
+      res.status(400).json({ error: 'sonnet_model must be a string' });
+      return;
+    }
+
+    if (
+      'haiku_model' in payload &&
+      payload.haiku_model !== undefined &&
+      payload.haiku_model !== null &&
+      typeof payload.haiku_model !== 'string'
+    ) {
+      res.status(400).json({ error: 'haiku_model must be a string' });
+      return;
+    }
+
     const config = loadOrCreateUnifiedConfig();
 
     // Merge updates with existing config
     config.copilot = {
-      enabled: updates.enabled ?? config.copilot?.enabled ?? DEFAULT_COPILOT_CONFIG.enabled,
+      enabled:
+        (payload.enabled as boolean) ?? config.copilot?.enabled ?? DEFAULT_COPILOT_CONFIG.enabled,
       auto_start:
-        updates.auto_start ?? config.copilot?.auto_start ?? DEFAULT_COPILOT_CONFIG.auto_start,
-      port: updates.port ?? config.copilot?.port ?? DEFAULT_COPILOT_CONFIG.port,
+        (payload.auto_start as boolean) ??
+        config.copilot?.auto_start ??
+        DEFAULT_COPILOT_CONFIG.auto_start,
+      port: (payload.port as number) ?? config.copilot?.port ?? DEFAULT_COPILOT_CONFIG.port,
       account_type:
-        updates.account_type ?? config.copilot?.account_type ?? DEFAULT_COPILOT_CONFIG.account_type,
+        (payload.account_type as 'individual' | 'business' | 'enterprise') ??
+        config.copilot?.account_type ??
+        DEFAULT_COPILOT_CONFIG.account_type,
       rate_limit:
-        updates.rate_limit !== undefined
-          ? updates.rate_limit
+        payload.rate_limit !== undefined
+          ? (payload.rate_limit as number | null)
           : (config.copilot?.rate_limit ?? DEFAULT_COPILOT_CONFIG.rate_limit),
       wait_on_limit:
-        updates.wait_on_limit ??
+        (payload.wait_on_limit as boolean) ??
         config.copilot?.wait_on_limit ??
         DEFAULT_COPILOT_CONFIG.wait_on_limit,
-      model: updates.model ?? config.copilot?.model ?? DEFAULT_COPILOT_CONFIG.model,
+      model: normalizedModel ?? config.copilot?.model ?? DEFAULT_COPILOT_CONFIG.model,
       opus_model:
-        updates.opus_model !== undefined ? updates.opus_model : config.copilot?.opus_model,
+        'opus_model' in payload
+          ? parseOptionalModel(payload.opus_model)
+          : config.copilot?.opus_model,
       sonnet_model:
-        updates.sonnet_model !== undefined ? updates.sonnet_model : config.copilot?.sonnet_model,
+        'sonnet_model' in payload
+          ? parseOptionalModel(payload.sonnet_model)
+          : config.copilot?.sonnet_model,
       haiku_model:
-        updates.haiku_model !== undefined ? updates.haiku_model : config.copilot?.haiku_model,
+        'haiku_model' in payload
+          ? parseOptionalModel(payload.haiku_model)
+          : config.copilot?.haiku_model,
     };
 
     saveUnifiedConfig(config);

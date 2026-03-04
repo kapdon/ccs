@@ -107,7 +107,8 @@ async function handleAuth(): Promise<number> {
     console.log('');
     console.log('Next steps:');
     console.log('  1. Enable copilot: ccs copilot enable');
-    console.log('  2. Start daemon:   npx copilot-api start');
+    console.log('  2. Start daemon:   ccs copilot start');
+    console.log('     (fallback:      npx copilot-api start)');
     console.log('  3. Use copilot:    ccs copilot');
     return 0;
   } else {

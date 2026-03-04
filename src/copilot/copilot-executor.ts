@@ -76,7 +76,8 @@ export function generateCopilotEnv(
 export async function executeCopilotProfile(
   config: CopilotConfig,
   claudeArgs: string[],
-  claudeConfigDir?: string
+  claudeConfigDir?: string,
+  claudeCliPath: string = 'claude'
 ): Promise<number> {
   // Ensure copilot-api is installed (auto-install if missing, auto-update if outdated)
   try {
@@ -125,7 +126,9 @@ export async function executeCopilotProfile(
     } else {
       console.error(fail('copilot-api daemon is not running.'));
       console.error('');
-      console.error('Start the daemon manually:');
+      console.error('Start the daemon:');
+      console.error('  ccs copilot start');
+      console.error('Fallback manual command:');
       console.error(`  npx copilot-api start --port ${config.port}`);
       console.error('');
       console.error('Or enable auto_start in config:');
@@ -158,7 +161,7 @@ export async function executeCopilotProfile(
 
   // Spawn Claude CLI
   return new Promise((resolve) => {
-    const proc = spawn('claude', claudeArgs, {
+    const proc = spawn(claudeCliPath, claudeArgs, {
       stdio: 'inherit',
       env,
       shell: process.platform === 'win32',

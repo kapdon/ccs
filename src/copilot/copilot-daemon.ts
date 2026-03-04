@@ -10,11 +10,28 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
 import { CopilotDaemonStatus } from './types';
-import { CopilotConfig } from '../config/unified-config-types';
+import { CopilotConfig, DEFAULT_COPILOT_CONFIG } from '../config/unified-config-types';
+import { loadOrCreateUnifiedConfig } from '../config/unified-config-loader';
 import { getCopilotDir, getCopilotApiBinPath } from './copilot-package-manager';
 import { verifyProcessOwnership } from '../cursor/daemon-process-ownership';
 
 const DAEMON_HEALTH_MARKER = 'server running';
+const MIN_PORT = 1;
+const MAX_PORT = 65535;
+
+function isValidPort(port: number): boolean {
+  return Number.isInteger(port) && port >= MIN_PORT && port <= MAX_PORT;
+}
+
+function getConfiguredCopilotPort(): number {
+  try {
+    const config = loadOrCreateUnifiedConfig();
+    const port = config.copilot?.port ?? DEFAULT_COPILOT_CONFIG.port;
+    return isValidPort(port) ? port : DEFAULT_COPILOT_CONFIG.port;
+  } catch {
+    return DEFAULT_COPILOT_CONFIG.port;
+  }
+}
 
 function getPidFilePath(): string {
   return path.join(getCopilotDir(), 'daemon.pid');
@@ -25,6 +42,10 @@ function getPidFilePath(): string {
  * Uses 127.0.0.1 instead of localhost for more reliable local connections.
  */
 export async function isDaemonRunning(port: number): Promise<boolean> {
+  if (!isValidPort(port)) {
+    return false;
+  }
+
   return new Promise((resolve) => {
     const req = http.request(
       {
@@ -136,6 +157,13 @@ function removePidFile(): void {
 export async function startDaemon(
   config: CopilotConfig
 ): Promise<{ success: boolean; pid?: number; error?: string }> {
+  if (!isValidPort(config.port)) {
+    return {
+      success: false,
+      error: `Invalid Copilot daemon port ${config.port}. Expected integer between ${MIN_PORT} and ${MAX_PORT}.`,
+    };
+  }
+
   // Check if already running
   if (await isDaemonRunning(config.port)) {
     return { success: true, pid: getPidFromFile() ?? undefined };
@@ -250,6 +278,7 @@ export async function startDaemon(
  */
 export async function stopDaemon(): Promise<{ success: boolean; error?: string }> {
   const pid = getPidFromFile();
+  const configuredPort = getConfiguredCopilotPort();
 
   if (!pid) {
     // No PID file, try to find by port
@@ -260,8 +289,12 @@ export async function stopDaemon(): Promise<{ success: boolean; error?: string }
   try {
     const ownership = verifyProcessOwnership(pid, (commandLine) => {
       const lower = commandLine.toLowerCase();
+      const hasCopilotApiBinary = /(^|[\\/\s])copilot-api(\.cmd|\.exe)?(\s|$)/.test(lower);
+      const hasStartCommand = /\bstart\b/.test(lower);
+      const hasExpectedPort =
+        lower.includes(`--port ${configuredPort}`) || lower.includes(`--port=${configuredPort}`);
       // copilot-api is launched as `... copilot-api start --port <n>`
-      return lower.includes('copilot-api') && lower.includes(' start');
+      return hasCopilotApiBinary && hasStartCommand && hasExpectedPort;
     });
     if (ownership === 'not-running') {
       removePidFile();
@@ -270,11 +303,23 @@ export async function stopDaemon(): Promise<{ success: boolean; error?: string }
 
     if (ownership === 'not-owned') {
       // PID was reused by an unrelated process.
+      // If daemon is still live on configured port, report failure (stop not completed).
+      if (await isDaemonRunning(configuredPort)) {
+        return {
+          success: false,
+          error: `Refusing to clear PID ${pid}: unrelated process owns PID and daemon is still responding on port ${configuredPort}`,
+        };
+      }
       removePidFile();
       return { success: true };
     }
 
     if (ownership === 'unknown') {
+      // If daemon is not reachable, allow stale PID cleanup.
+      if (!(await isDaemonRunning(configuredPort))) {
+        removePidFile();
+        return { success: true };
+      }
       return {
         success: false,
         error: `Refusing to stop PID ${pid}: unable to verify daemon ownership`,
