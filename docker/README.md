@@ -83,6 +83,10 @@ docker-compose -f docker/docker-compose.yml up --build -d
 docker-compose -f docker/docker-compose.yml logs -f
 ```
 
+The included Compose file uses `expose` for ports `3000` and `8317`. That makes them available to other containers on the same Docker network, but does not publish them to the host.
+
+If you need host access via Compose, add a small override with `ports:` or use the `docker run` examples above.
+
 Stop:
 
 ```bash
@@ -149,8 +153,11 @@ lsof -i :8317
 # Use different ports
 docker run -p 4000:3000 -p 9317:8317 ...
 
-# Or with compose
-CCS_DASHBOARD_PORT=4000 CCS_CLIPROXY_PORT=9317 docker-compose up -d
+# If you publish ports with a compose override, change the host side there too
+# Example:
+# ports:
+#   - "4000:3000"
+#   - "9317:8317"
 ```
 
 ### Container Keeps Restarting

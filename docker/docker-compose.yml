@@ -8,9 +8,9 @@ services:
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     init: true
-    ports:
-      - "${CCS_DASHBOARD_PORT:-3000}:3000"
-      - "${CCS_CLIPROXY_PORT:-8317}:8317"
+    expose:
+      - "3000"
+      - "8317"
     environment:
       CCS_PORT: 3000
       CCS_DEBUG: "${CCS_DEBUG:-}"
