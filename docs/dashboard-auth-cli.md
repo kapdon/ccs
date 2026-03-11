@@ -179,8 +179,9 @@ dashboard_auth:
 
 1. **Bcrypt hashing**: Passwords are hashed with bcrypt (10 rounds) before storage
 2. **Session cookies**: Sessions use HTTP-only cookies (not accessible via JavaScript)
-3. **Rate limiting**: Login attempts are rate-limited (5 per 15 minutes)
-4. **File permissions**: Config file is created with 0o600 permissions
+3. **Route protection**: When enabled, unauthenticated browser requests are redirected to `/login` and protected API routes return `401`
+4. **Rate limiting**: Login attempts are rate-limited (5 per 15 minutes)
+5. **File permissions**: Config file is created with 0o600 permissions
 
 ## Troubleshooting
 

@@ -20,8 +20,47 @@ declare module 'express-session' {
   }
 }
 
-/** Public paths that bypass auth (lowercase for case-insensitive matching) */
-const PUBLIC_PATHS = ['/api/auth/login', '/api/auth/check', '/api/auth/setup', '/api/health'];
+/** Public API paths that bypass auth (lowercase for case-insensitive matching) */
+export const PUBLIC_API_PATHS = [
+  '/api/auth/login',
+  '/api/auth/check',
+  '/api/auth/setup',
+  '/api/health',
+];
+
+/** Public document routes required for the login flow */
+export const PUBLIC_DOCUMENT_PATHS = ['/login'];
+
+/** Dev/prod asset prefixes that must stay reachable before login */
+const PUBLIC_ASSET_PREFIXES = ['/assets/', '/@', '/__vite', '/src/', '/node_modules/'];
+
+/** Match common static asset requests but not HTML documents like /index.html */
+const STATIC_ASSET_PATTERN = /\/[^/]+\.[a-z0-9]+$/i;
+
+export function isPublicApiPath(requestPath: string): boolean {
+  const pathLower = requestPath.toLowerCase();
+  return PUBLIC_API_PATHS.some((publicPath) => pathLower.startsWith(publicPath));
+}
+
+export function isPublicDocumentPath(requestPath: string): boolean {
+  const pathLower = requestPath.toLowerCase();
+  return PUBLIC_DOCUMENT_PATHS.some(
+    (publicPath) => pathLower === publicPath || pathLower.startsWith(`${publicPath}/`)
+  );
+}
+
+export function isStaticAssetPath(requestPath: string): boolean {
+  const pathLower = requestPath.toLowerCase();
+
+  if (pathLower.endsWith('.html')) {
+    return false;
+  }
+
+  return (
+    STATIC_ASSET_PATTERN.test(pathLower) ||
+    PUBLIC_ASSET_PREFIXES.some((prefix) => pathLower.startsWith(prefix))
+  );
+}
 
 /** Path to persistent session secret file */
 function getSessionSecretPath() {
@@ -113,22 +152,32 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     return next();
   }
 
-  // Allow public paths (case-insensitive)
-  const pathLower = req.path.toLowerCase();
-  if (PUBLIC_PATHS.some((p) => pathLower.startsWith(p))) {
+  // Allow public auth/setup API routes
+  if (isPublicApiPath(req.path)) {
     return next();
   }
 
-  // Allow static assets and SPA routes (non-API)
-  if (!req.path.startsWith('/api/')) {
-    return next();
-  }
-
-  // Check session
+  // Allow authenticated sessions through before route-specific handling
   if (req.session?.authenticated) {
     return next();
   }
 
-  // Unauthorized
-  res.status(401).json({ error: 'Authentication required' });
+  // Unauthenticated API access gets a JSON 401
+  if (req.path.startsWith('/api/')) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  // Allow login shell and static assets required to render it
+  if (isPublicDocumentPath(req.path) || isStaticAssetPath(req.path)) {
+    return next();
+  }
+
+  // Browser document requests should go to the login page instead of a raw 401
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    res.redirect('/login');
+    return;
+  }
+
+  res.status(401).send('Authentication required');
 }

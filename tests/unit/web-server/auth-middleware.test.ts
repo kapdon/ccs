@@ -5,8 +5,11 @@
 
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import bcrypt from 'bcrypt';
+import type { Request, Response } from 'express';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
-// Mock the config loader
 const mockAuthConfig = {
   enabled: false,
   username: '',
@@ -14,9 +17,7 @@ const mockAuthConfig = {
   session_timeout_hours: 24,
 };
 
-mock.module('../../src/config/unified-config-loader', () => ({
-  getDashboardAuthConfig: () => ({ ...mockAuthConfig }),
-}));
+let tempCcsHome = '';
 
 describe('Dashboard Auth', () => {
   beforeEach(() => {
@@ -24,17 +25,31 @@ describe('Dashboard Auth', () => {
     mockAuthConfig.enabled = false;
     mockAuthConfig.username = '';
     mockAuthConfig.password_hash = '';
+
+    tempCcsHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-auth-test-'));
+    process.env.CCS_HOME = tempCcsHome;
+    delete process.env.CCS_DASHBOARD_AUTH_ENABLED;
+    delete process.env.CCS_DASHBOARD_USERNAME;
+    delete process.env.CCS_DASHBOARD_PASSWORD_HASH;
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempCcsHome, { recursive: true, force: true });
+    delete process.env.CCS_HOME;
+    delete process.env.CCS_DASHBOARD_AUTH_ENABLED;
+    delete process.env.CCS_DASHBOARD_USERNAME;
+    delete process.env.CCS_DASHBOARD_PASSWORD_HASH;
   });
 
   describe('getDashboardAuthConfig', () => {
     it('returns disabled by default', async () => {
-      const { getDashboardAuthConfig } = await import('../../src/config/unified-config-loader');
+      const { getDashboardAuthConfig } = await import('../../../src/config/unified-config-loader');
       const config = getDashboardAuthConfig();
       expect(config.enabled).toBe(false);
     });
 
     it('returns 24 hour default session timeout', async () => {
-      const { getDashboardAuthConfig } = await import('../../src/config/unified-config-loader');
+      const { getDashboardAuthConfig } = await import('../../../src/config/unified-config-loader');
       const config = getDashboardAuthConfig();
       expect(config.session_timeout_hours).toBe(24);
     });
@@ -84,27 +99,41 @@ describe('Dashboard Auth', () => {
     });
   });
 
-  describe('public paths', () => {
-    const PUBLIC_PATHS = ['/api/auth/login', '/api/auth/check', '/api/auth/setup', '/api/health'];
+  describe('path classification', () => {
+    it('identifies public API paths correctly', async () => {
+      const { isPublicApiPath } = await import(
+        '../../../src/web-server/middleware/auth-middleware'
+      );
 
-    it('identifies public paths correctly', () => {
-      const isPublicPath = (path: string) =>
-        PUBLIC_PATHS.some((p) => path.toLowerCase().startsWith(p));
-
-      expect(isPublicPath('/api/auth/login')).toBe(true);
-      expect(isPublicPath('/api/auth/check')).toBe(true);
-      expect(isPublicPath('/api/auth/setup')).toBe(true);
-      expect(isPublicPath('/api/health')).toBe(true);
-      expect(isPublicPath('/api/profiles')).toBe(false);
-      expect(isPublicPath('/api/config')).toBe(false);
+      expect(isPublicApiPath('/api/auth/login')).toBe(true);
+      expect(isPublicApiPath('/api/auth/check')).toBe(true);
+      expect(isPublicApiPath('/api/auth/setup')).toBe(true);
+      expect(isPublicApiPath('/api/health')).toBe(true);
+      expect(isPublicApiPath('/api/profiles')).toBe(false);
+      expect(isPublicApiPath('/api/config')).toBe(false);
     });
 
-    it('handles case-insensitive paths', () => {
-      const isPublicPath = (path: string) =>
-        PUBLIC_PATHS.some((p) => path.toLowerCase().startsWith(p));
+    it('allows the login document route', async () => {
+      const { isPublicDocumentPath } = await import(
+        '../../../src/web-server/middleware/auth-middleware'
+      );
 
-      expect(isPublicPath('/API/AUTH/LOGIN')).toBe(true);
-      expect(isPublicPath('/Api/Health')).toBe(true);
+      expect(isPublicDocumentPath('/login')).toBe(true);
+      expect(isPublicDocumentPath('/LOGIN')).toBe(true);
+      expect(isPublicDocumentPath('/analytics')).toBe(false);
+    });
+
+    it('allows static assets but blocks html documents', async () => {
+      const { isStaticAssetPath } = await import(
+        '../../../src/web-server/middleware/auth-middleware'
+      );
+
+      expect(isStaticAssetPath('/assets/index.js')).toBe(true);
+      expect(isStaticAssetPath('/favicon.ico')).toBe(true);
+      expect(isStaticAssetPath('/@vite/client')).toBe(true);
+      expect(isStaticAssetPath('/__vite_ping')).toBe(true);
+      expect(isStaticAssetPath('/index.html')).toBe(false);
+      expect(isStaticAssetPath('/analytics')).toBe(false);
     });
   });
 
@@ -151,6 +180,65 @@ describe('Dashboard Auth', () => {
       const usernameMatch = 'wrong' === mockAuthConfig.username;
       expect(usernameMatch).toBe(false);
     });
+
+    it('redirects unauthenticated document requests to login when enabled', async () => {
+      process.env.CCS_DASHBOARD_AUTH_ENABLED = 'true';
+
+      const { authMiddleware } = await import('../../../src/web-server/middleware/auth-middleware');
+      const req = createMockRequest({ path: '/', method: 'GET' });
+      const res = createMockResponse();
+      const next = mock(() => {});
+
+      authMiddleware(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.redirectLocation).toBe('/login');
+      expect(res.statusCode).toBe(302);
+    });
+
+    it('blocks unauthenticated API requests with JSON 401 when enabled', async () => {
+      process.env.CCS_DASHBOARD_AUTH_ENABLED = 'true';
+
+      const { authMiddleware } = await import('../../../src/web-server/middleware/auth-middleware');
+      const req = createMockRequest({ path: '/api/profiles', method: 'GET' });
+      const res = createMockResponse();
+      const next = mock(() => {});
+
+      authMiddleware(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.statusCode).toBe(401);
+      expect(res.jsonBody).toEqual({ error: 'Authentication required' });
+    });
+
+    it('allows the login page and static assets before authentication', async () => {
+      process.env.CCS_DASHBOARD_AUTH_ENABLED = 'true';
+
+      const { authMiddleware } = await import('../../../src/web-server/middleware/auth-middleware');
+      const next = mock(() => {});
+
+      authMiddleware(createMockRequest({ path: '/login' }), createMockResponse(), next);
+      authMiddleware(createMockRequest({ path: '/assets/index.js' }), createMockResponse(), next);
+
+      expect(next).toHaveBeenCalledTimes(2);
+    });
+
+    it('allows authenticated sessions through protected routes', async () => {
+      process.env.CCS_DASHBOARD_AUTH_ENABLED = 'true';
+
+      const { authMiddleware } = await import('../../../src/web-server/middleware/auth-middleware');
+      const req = createMockRequest({
+        path: '/api/profiles',
+        session: { authenticated: true, username: 'admin' },
+      });
+      const res = createMockResponse();
+      const next = mock(() => {});
+
+      authMiddleware(req, res, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.statusCode).toBe(200);
+    });
   });
 
   describe('rate limiting config', () => {
@@ -165,3 +253,50 @@ describe('Dashboard Auth', () => {
     });
   });
 });
+
+function createMockRequest(overrides: Partial<Request> = {}): Request {
+  return {
+    path: '/',
+    method: 'GET',
+    session: { authenticated: false, username: '' },
+    ...overrides,
+  } as Request;
+}
+
+function createMockResponse(): Response & {
+  statusCode: number;
+  jsonBody: unknown;
+  textBody: unknown;
+  redirectLocation: string | null;
+} {
+  const response = {
+    statusCode: 200,
+    jsonBody: null,
+    textBody: null,
+    redirectLocation: null,
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body: unknown) {
+      this.jsonBody = body;
+      return this;
+    },
+    send(body: unknown) {
+      this.textBody = body;
+      return this;
+    },
+    redirect(location: string) {
+      this.statusCode = 302;
+      this.redirectLocation = location;
+      return this;
+    },
+  };
+
+  return response as Response & {
+    statusCode: number;
+    jsonBody: unknown;
+    textBody: unknown;
+    redirectLocation: string | null;
+  };
+}
