@@ -101,6 +101,10 @@ describe('InstanceManager MCP sync', () => {
     );
     spyOn(SharedManager.prototype, 'syncProjectContext').mockResolvedValue(undefined);
     spyOn(SharedManager.prototype, 'syncAdvancedContinuityArtifacts').mockResolvedValue(undefined);
+    const normalizeSharedPluginMetadataSpy = spyOn(
+      SharedManager.prototype,
+      'normalizeSharedPluginMetadataPaths'
+    ).mockImplementation(() => {});
     const syncMcpSpy = spyOn(InstanceManager.prototype, 'syncMcpServers').mockImplementation(
       () => false
     );
@@ -109,6 +113,28 @@ describe('InstanceManager MCP sync', () => {
     await manager.ensureInstance('sandbox', { mode: 'isolated' }, { bare: true });
 
     expect(linkSharedSpy).not.toHaveBeenCalled();
+    expect(normalizeSharedPluginMetadataSpy).not.toHaveBeenCalled();
     expect(syncMcpSpy).not.toHaveBeenCalled();
+  });
+
+  it('normalizes shared plugin metadata for existing non-bare instances', async () => {
+    spyOn(SharedManager.prototype, 'syncProjectContext').mockResolvedValue(undefined);
+    spyOn(SharedManager.prototype, 'syncAdvancedContinuityArtifacts').mockResolvedValue(undefined);
+    const normalizeSharedPluginMetadataSpy = spyOn(
+      SharedManager.prototype,
+      'normalizeSharedPluginMetadataPaths'
+    ).mockImplementation(() => {});
+    const syncMcpSpy = spyOn(InstanceManager.prototype, 'syncMcpServers').mockImplementation(
+      () => false
+    );
+
+    const manager = new InstanceManager();
+    const instancePath = manager.getInstancePath('work');
+    fs.mkdirSync(instancePath, { recursive: true });
+
+    await manager.ensureInstance('work', { mode: 'isolated' });
+
+    expect(normalizeSharedPluginMetadataSpy).toHaveBeenCalledTimes(1);
+    expect(syncMcpSpy).toHaveBeenCalledWith(instancePath);
   });
 });

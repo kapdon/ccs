@@ -60,6 +60,7 @@ class InstanceManager {
 
     // Sync MCP servers from global ~/.claude.json (unless bare)
     if (!options.bare) {
+      this.sharedManager.normalizeSharedPluginMetadataPaths();
       this.syncMcpServers(instancePath);
     }
 

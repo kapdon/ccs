@@ -210,8 +210,7 @@ class SharedManager {
       }
     }
 
-    // Normalize plugin registry paths after linking
-    this.normalizePluginRegistryPaths();
+    this.normalizeSharedPluginMetadataPaths();
   }
 
   /**
@@ -540,6 +539,14 @@ class SharedManager {
   }
 
   /**
+   * Normalize shared plugin metadata files to canonical ~/.claude/ paths.
+   */
+  normalizeSharedPluginMetadataPaths(): void {
+    this.normalizePluginRegistryPaths();
+    this.normalizeMarketplaceRegistryPaths();
+  }
+
+  /**
    * Normalize plugin registry paths to use canonical ~/.claude/ paths
    * instead of instance-specific ~/.ccs/instances/<name>/ paths.
    *
@@ -547,9 +554,33 @@ class SharedManager {
    * which CCS instance installed the plugin.
    */
   normalizePluginRegistryPaths(): void {
-    const registryPath = path.join(this.claudeDir, 'plugins', 'installed_plugins.json');
+    this.normalizePluginMetadataFile(
+      path.join(this.claudeDir, 'plugins', 'installed_plugins.json'),
+      'Normalized plugin registry paths',
+      'plugin registry'
+    );
+  }
 
-    // Skip if registry doesn't exist
+  /**
+   * Normalize marketplace registry paths to use canonical ~/.claude/ paths
+   * instead of instance-specific ~/.ccs/instances/<name>/ paths.
+   *
+   * This ensures known_marketplaces.json is consistent regardless of
+   * which CCS instance added the marketplace.
+   */
+  normalizeMarketplaceRegistryPaths(): void {
+    this.normalizePluginMetadataFile(
+      path.join(this.claudeDir, 'plugins', 'known_marketplaces.json'),
+      'Normalized marketplace registry paths',
+      'marketplace registry'
+    );
+  }
+
+  private normalizePluginMetadataFile(
+    registryPath: string,
+    successMessage: string,
+    warningLabel: string
+  ): void {
     if (!fs.existsSync(registryPath)) {
       return;
     }
@@ -557,20 +588,16 @@ class SharedManager {
     try {
       const original = fs.readFileSync(registryPath, 'utf8');
 
-      // Replace instance paths with canonical claude path
       // Pattern: /.ccs/instances/<instance-name>/ -> /.claude/
       const normalized = original.replace(/\/\.ccs\/instances\/[^/]+\//g, '/.claude/');
 
-      // Only write if changes were made
       if (normalized !== original) {
-        // Validate JSON before writing
         JSON.parse(normalized);
         fs.writeFileSync(registryPath, normalized, 'utf8');
-        console.log(ok('Normalized plugin registry paths'));
+        console.log(ok(successMessage));
       }
     } catch (err) {
-      // Log warning but don't fail - registry may be malformed
-      console.log(warn(`Could not normalize plugin registry: ${(err as Error).message}`));
+      console.log(warn(`Could not normalize ${warningLabel}: ${(err as Error).message}`));
     }
   }
 
