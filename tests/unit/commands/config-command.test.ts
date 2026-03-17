@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 const startServerCalls: Array<Record<string, unknown>> = [];
 const resolveDashboardUrlsCalls: Array<[string | undefined, number]> = [];
+const configAuthCalls: string[][] = [];
 let logLines: string[] = [];
 let errorLines: string[] = [];
 let dashboardAuthEnabled = false;
@@ -14,6 +15,7 @@ let originalProcessExit: typeof process.exit;
 beforeEach(() => {
   startServerCalls.length = 0;
   resolveDashboardUrlsCalls.length = 0;
+  configAuthCalls.length = 0;
   logLines = [];
   errorLines = [];
   dashboardAuthEnabled = false;
@@ -122,6 +124,12 @@ beforeEach(() => {
       };
     },
   }));
+
+  mock.module('../../../src/commands/config-auth', () => ({
+    handleConfigAuthCommand: async (args: string[]) => {
+      configAuthCalls.push([...args]);
+    },
+  }));
 });
 
 afterEach(() => {
@@ -132,11 +140,23 @@ afterEach(() => {
 });
 
 async function loadHandleConfigCommand() {
-  const mod = await import(`../../../src/commands/config-command?test=${Date.now()}-${Math.random()}`);
+  const mod = await import(
+    `../../../src/commands/config-command?test=${Date.now()}-${Math.random()}`
+  );
   return mod.handleConfigCommand;
 }
 
 describe('config command dashboard startup', () => {
+  it('routes auth subcommands before dashboard startup', async () => {
+    const handleConfigCommand = await loadHandleConfigCommand();
+
+    await handleConfigCommand(['auth', 'setup']);
+
+    expect(configAuthCalls).toEqual([['setup']]);
+    expect(startServerCalls).toHaveLength(0);
+    expect(resolveDashboardUrlsCalls).toHaveLength(0);
+  });
+
   it('keeps the default startup path free of an explicit host override', async () => {
     const handleConfigCommand = await loadHandleConfigCommand();
 

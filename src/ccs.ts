@@ -40,15 +40,7 @@ import { isCopilotSubcommandToken } from './copilot/constants';
 
 // Import centralized error handling
 import { handleError, runCleanup } from './errors';
-
-// Import extracted command handlers
-import { handleVersionCommand } from './commands/version-command';
-import { handleHelpCommand } from './commands/help-command';
-import { handleInstallCommand, handleUninstallCommand } from './commands/install-command';
-import { handleDoctorCommand } from './commands/doctor-command';
-import { handleSyncCommand } from './commands/sync-command';
-import { handleShellCompletionCommand } from './commands/shell-completion-command';
-import { handleUpdateCommand } from './commands/update-command';
+import { tryHandleRootCommand } from './commands/root-command-router';
 
 // Import extracted utility functions
 import {
@@ -462,119 +454,7 @@ async function main(): Promise<void> {
     console.warn('[!] Recovery failed:', (err as Error).message);
   }
 
-  // Special case: migrate command
-  if (firstArg === 'migrate' || firstArg === '--migrate') {
-    const { handleMigrateCommand, printMigrateHelp } = await import('./commands/migrate-command');
-    const migrateArgs = args.slice(1);
-
-    if (migrateArgs.includes('--help') || migrateArgs.includes('-h')) {
-      printMigrateHelp();
-      return;
-    }
-
-    await handleMigrateCommand(migrateArgs);
-    return;
-  }
-
-  // Special case: update command
-  if (firstArg === 'update' || firstArg === '--update') {
-    const updateArgs = args.slice(1);
-
-    // Handle --help for update command
-    if (updateArgs.includes('--help') || updateArgs.includes('-h')) {
-      console.log('');
-      console.log('Usage: ccs update [options]');
-      console.log('');
-      console.log('Options:');
-      console.log('  --force       Force reinstall current version');
-      console.log('  --beta, --dev Install from dev channel (unstable)');
-      console.log('  --help, -h    Show this help message');
-      console.log('');
-      console.log('Examples:');
-      console.log('  ccs update           Update to latest stable');
-      console.log('  ccs update --force   Force reinstall');
-      console.log('  ccs update --beta    Install dev channel');
-      console.log('');
-      return;
-    }
-
-    const forceFlag = updateArgs.includes('--force');
-    const betaFlag = updateArgs.includes('--beta') || updateArgs.includes('--dev');
-    await handleUpdateCommand({ force: forceFlag, beta: betaFlag });
-    return;
-  }
-
-  const commandAliases: Record<string, string> = {
-    '--version': 'version',
-    '-v': 'version',
-    '--help': 'help',
-    '-h': 'help',
-    '--doctor': 'doctor',
-    '--sync': 'sync',
-    '--cleanup': 'cleanup',
-    '--setup': 'setup',
-  };
-
-  const normalizedFirstArg = commandAliases[firstArg] || firstArg;
-
-  const earlyCommandHandlers: Record<string, () => Promise<void>> = {
-    version: async () => handleVersionCommand(),
-    help: async () => handleHelpCommand(),
-    '--install': async () => handleInstallCommand(),
-    '--uninstall': async () => handleUninstallCommand(),
-    '--shell-completion': async () => handleShellCompletionCommand(args.slice(1)),
-    '-sc': async () => handleShellCompletionCommand(args.slice(1)),
-    doctor: async () => handleDoctorCommand(args.slice(1)),
-    sync: async () => handleSyncCommand(),
-    cleanup: async () => {
-      const { handleCleanupCommand } = await import('./commands/cleanup-command');
-      await handleCleanupCommand(args.slice(1));
-    },
-    auth: async () => {
-      const AuthCommandsModule = await import('./auth/auth-commands');
-      const AuthCommands = AuthCommandsModule.default;
-      const authCommands = new AuthCommands();
-      await authCommands.route(args.slice(1));
-    },
-    api: async () => {
-      const { handleApiCommand } = await import('./commands/api-command');
-      await handleApiCommand(args.slice(1));
-    },
-    cliproxy: async () => {
-      const { handleCliproxyCommand } = await import('./commands/cliproxy-command');
-      await handleCliproxyCommand(args.slice(1));
-    },
-    config: async () => {
-      const { handleConfigCommand } = await import('./commands/config-command');
-      await handleConfigCommand(args.slice(1));
-    },
-    tokens: async () => {
-      const { handleTokensCommand } = await import('./commands/tokens-command');
-      const exitCode = await handleTokensCommand(args.slice(1));
-      process.exit(exitCode);
-    },
-    persist: async () => {
-      const { handlePersistCommand } = await import('./commands/persist-command');
-      await handlePersistCommand(args.slice(1));
-    },
-    env: async () => {
-      const { handleEnvCommand } = await import('./commands/env-command');
-      await handleEnvCommand(args.slice(1));
-    },
-    setup: async () => {
-      const { handleSetupCommand } = await import('./commands/setup-command');
-      await handleSetupCommand(args.slice(1));
-    },
-    cursor: async () => {
-      const { handleCursorCommand } = await import('./commands/cursor-command');
-      const exitCode = await handleCursorCommand(args.slice(1));
-      process.exit(exitCode);
-    },
-  };
-
-  const earlyCommandHandler = earlyCommandHandlers[normalizedFirstArg];
-  if (earlyCommandHandler) {
-    await earlyCommandHandler();
+  if (await tryHandleRootCommand(args)) {
     return;
   }
 

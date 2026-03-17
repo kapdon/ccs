@@ -14,6 +14,7 @@ import { ensureCliproxyService } from '../cliproxy/service-manager';
 import { CLIPROXY_DEFAULT_PORT } from '../cliproxy/config-generator';
 import { getDashboardAuthConfig } from '../config/unified-config-loader';
 import { initUI, header, ok, info, warn, fail } from '../utils/ui';
+import { resolveNamedCommand, type NamedCommandRoute } from './named-command-router';
 import {
   isLoopbackHost,
   isWildcardHost,
@@ -22,28 +23,39 @@ import {
 } from './config-dashboard-host';
 import { parseConfigCommandArgs, showConfigCommandHelp } from './config-command-options';
 
+const CONFIG_SUBCOMMAND_ROUTES: readonly NamedCommandRoute[] = [
+  {
+    name: 'auth',
+    handle: async (args) => {
+      const { handleConfigAuthCommand } = await import('./config-auth');
+      await handleConfigAuthCommand(args);
+    },
+  },
+  {
+    name: 'image-analysis',
+    handle: async (args) => {
+      const { handleConfigImageAnalysisCommand } = await import('./config-image-analysis-command');
+      await handleConfigImageAnalysisCommand(args);
+    },
+  },
+  {
+    name: 'thinking',
+    handle: async (args) => {
+      const { handleConfigThinkingCommand } = await import('./config-thinking-command');
+      await handleConfigThinkingCommand(args);
+    },
+  },
+];
+
 /**
  * Handle config command
  */
 export async function handleConfigCommand(args: string[]): Promise<void> {
-  // Route subcommands before dashboard launch
-  if (args[0] === 'auth') {
-    const { handleConfigAuthCommand } = await import('./config-auth');
-    await handleConfigAuthCommand(args.slice(1));
-    return;
-  }
-
-  // Route image-analysis subcommand
-  if (args[0] === 'image-analysis') {
-    const { handleConfigImageAnalysisCommand } = await import('./config-image-analysis-command');
-    await handleConfigImageAnalysisCommand(args.slice(1));
-    return;
-  }
-
-  // Route thinking subcommand
-  if (args[0] === 'thinking') {
-    const { handleConfigThinkingCommand } = await import('./config-thinking-command');
-    await handleConfigThinkingCommand(args.slice(1));
+  const subcommand = args[0]?.startsWith('-')
+    ? undefined
+    : resolveNamedCommand(args[0], CONFIG_SUBCOMMAND_ROUTES);
+  if (subcommand) {
+    await subcommand.handle(args.slice(1));
     return;
   }
 

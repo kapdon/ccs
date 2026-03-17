@@ -9,6 +9,8 @@ import { Agent, Dispatcher, ProxyAgent, fetch as undiciFetch, setGlobalDispatche
 import { getProxyResolution, shouldBypassProxy } from './proxy-env';
 
 const FETCH_PROXY_PROTOCOLS = ['http:', 'https:'];
+type RoutingDispatchOptions = Parameters<Dispatcher['dispatch']>[0];
+type RoutingDispatchHandler = Parameters<Dispatcher['dispatch']>[1];
 
 type GlobalFetchProxyConfig = {
   httpProxyUrl?: string;
@@ -27,7 +29,7 @@ class RoutingProxyDispatcher extends Dispatcher {
     this.httpsProxyDispatcher = httpsProxyUrl ? new ProxyAgent(httpsProxyUrl) : null;
   }
 
-  dispatch(options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandlers): boolean {
+  dispatch(options: RoutingDispatchOptions, handler: RoutingDispatchHandler): boolean {
     return this.resolveDispatcher(options.origin).dispatch(options, handler);
   }
 
