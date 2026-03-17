@@ -34,7 +34,7 @@ The main CLI is organized into domain-specific modules with barrel exports.
 
 ```
 src/
-├── ccs.ts                    # Main entry point & CLI router
+├── ccs.ts                    # Main entry point & profile execution flow
 ├── types/                    # TypeScript type definitions
 │   ├── index.ts              # Barrel export (aggregates all types)
 │   ├── cli.ts                # CLI types (ParsedArgs, ExitCode)
@@ -44,13 +44,19 @@ src/
 │   └── utils.ts              # Utility types (ErrorCode, LogLevel)
 │
 ├── commands/                 # CLI command handlers
+│   ├── api-command/          # API profile subcommands (split facade + handlers)
+│   │   ├── index.ts          # API command facade/router
+│   │   ├── shared.ts         # Shared API arg parsing helpers
+│   │   └── [subcommand files...]
 │   ├── cliproxy-command.ts   # CLIProxy subcommand handling
 │   ├── config-command.ts     # Config management commands
 │   ├── config-image-analysis-command.ts  # Image analysis hook config (NEW v7.34)
+│   ├── named-command-router.ts  # Reusable named-command dispatcher
 │   ├── doctor-command.ts     # Health diagnostics
 │   ├── env-command.ts        # Export shell env vars for third-party tools (v7.39)
 │   ├── help-command.ts       # Help text generation
 │   ├── install-command.ts    # Install/uninstall logic
+│   ├── root-command-router.ts  # Extracted top-level command dispatch from ccs.ts
 │   ├── shell-completion-command.ts
 │   ├── sync-command.ts       # Symlink synchronization
 │   ├── update-command.ts     # Self-update logic

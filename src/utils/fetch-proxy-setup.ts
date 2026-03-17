@@ -27,7 +27,7 @@ class RoutingProxyDispatcher extends Dispatcher {
     this.httpsProxyDispatcher = httpsProxyUrl ? new ProxyAgent(httpsProxyUrl) : null;
   }
 
-  dispatch(options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandlers): boolean {
+  dispatch(options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandler): boolean {
     return this.resolveDispatcher(options.origin).dispatch(options, handler);
   }
 
