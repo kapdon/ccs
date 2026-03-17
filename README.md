@@ -11,7 +11,7 @@ Run Claude, Gemini, GLM, and any Anthropic-compatible API - concurrently, withou
 [![npm](https://img.shields.io/npm/v/@kaitranntt/ccs?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/@kaitranntt/ccs)
 [![PoweredBy](https://img.shields.io/badge/PoweredBy-ClaudeKit-C15F3C?style=for-the-badge)](https://claudekit.cc?ref=HMNKXOHN)
 
-**[Features & Pricing](https://ccs.kaitran.ca)** | **[Documentation](https://docs.ccs.kaitran.ca)**
+**[Features & Pricing](https://ccs.kaitran.ca)** | **[Documentation Hub](https://docs.ccs.kaitran.ca)**
 
 </div>
 
@@ -28,6 +28,9 @@ Run Claude, Gemini, GLM, and any Anthropic-compatible API - concurrently, withou
 <br>
 
 ## Quick Start
+
+Looking for the full setup guide, command reference, provider guides, or troubleshooting?
+Start at **https://docs.ccs.kaitran.ca**.
 
 ### 1. Install
 
@@ -608,10 +611,14 @@ Notes:
 
 <br>
 
-## Documentation
+## Documentation Hub
+
+If you are not sure where to start, open **https://docs.ccs.kaitran.ca** first.
+The hosted docs are the best entry point for setup, command reference, provider guides, and troubleshooting.
 
 | Topic | Link |
 |-------|------|
+| Docs Home | [docs.ccs.kaitran.ca](https://docs.ccs.kaitran.ca) |
 | Installation | [docs.ccs.kaitran.ca/getting-started/installation](https://docs.ccs.kaitran.ca/getting-started/installation) |
 | Configuration | [docs.ccs.kaitran.ca/getting-started/configuration](https://docs.ccs.kaitran.ca/getting-started/configuration) |
 | OAuth Providers | [docs.ccs.kaitran.ca/providers/oauth-providers](https://docs.ccs.kaitran.ca/providers/oauth-providers) |
@@ -673,6 +680,6 @@ MIT License - see [LICENSE](LICENSE).
 
 ---
 
-**[ccs.kaitran.ca](https://ccs.kaitran.ca)** | [Report Issues](https://github.com/kaitranntt/ccs/issues) | [Star on GitHub](https://github.com/kaitranntt/ccs)
+**[ccs.kaitran.ca](https://ccs.kaitran.ca)** | **[docs.ccs.kaitran.ca](https://docs.ccs.kaitran.ca)** | [Report Issues](https://github.com/kaitranntt/ccs/issues) | [Star on GitHub](https://github.com/kaitranntt/ccs)
 
 </div>
