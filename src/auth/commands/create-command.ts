@@ -163,7 +163,7 @@ export async function handleCreate(ctx: CommandContext, args: string[]): Promise
 
     if (!profileExistedBeforeCreate) {
       try {
-        ctx.instanceMgr.deleteInstance(profileName);
+        await ctx.instanceMgr.deleteInstance(profileName);
       } catch {
         // Best-effort cleanup.
       }

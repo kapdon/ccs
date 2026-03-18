@@ -26,11 +26,13 @@ class InstanceManager {
   private readonly instancesDir: string;
   private readonly sharedManager: SharedManager;
   private readonly contextSyncLock: ProfileContextSyncLock;
+  private readonly pluginLayoutLock: ProfileContextSyncLock;
 
   constructor() {
     this.instancesDir = path.join(getCcsDir(), 'instances');
     this.sharedManager = new SharedManager();
     this.contextSyncLock = new ProfileContextSyncLock(this.instancesDir);
+    this.pluginLayoutLock = new ProfileContextSyncLock(this.instancesDir);
   }
 
   /**
@@ -56,9 +58,17 @@ class InstanceManager {
       // Apply context policy (isolated by default, optional shared group).
       await this.sharedManager.syncProjectContext(instancePath, contextPolicy);
       await this.sharedManager.syncAdvancedContinuityArtifacts(instancePath, contextPolicy);
-    });
 
-    this.sharedManager.normalizeSharedPluginMetadataPaths(instancePath);
+      await this.pluginLayoutLock.withNamedLock('__plugin-layout__', async () => {
+        if (!options.bare) {
+          this.sharedManager.linkSharedDirectories(instancePath);
+          return;
+        }
+
+        this.sharedManager.detachSharedDirectories(instancePath);
+        this.sharedManager.normalizeSharedPluginMetadataPaths();
+      });
+    });
 
     // Sync MCP servers from global ~/.claude.json (unless bare)
     if (!options.bare) {
@@ -82,7 +92,7 @@ class InstanceManager {
   private initializeInstance(
     profileName: string,
     instancePath: string,
-    options: InstanceOptions = {}
+    _options: InstanceOptions = {}
   ): void {
     try {
       // Create base directory
@@ -106,10 +116,7 @@ class InstanceManager {
         }
       });
 
-      // Bare profiles skip shared symlinks (commands, skills, agents, settings.json)
-      if (!options.bare) {
-        this.sharedManager.linkSharedDirectories(instancePath);
-      }
+      // Shared links are created during ensureInstance() under the plugin layout lock.
     } catch (error) {
       throw new Error(
         `Failed to initialize instance for ${profileName}: ${(error as Error).message}`
@@ -146,15 +153,22 @@ class InstanceManager {
   /**
    * Delete instance for profile
    */
-  deleteInstance(profileName: string): void {
+  async deleteInstance(profileName: string): Promise<void> {
     const instancePath = this.getInstancePath(profileName);
 
     if (!fs.existsSync(instancePath)) {
       return;
     }
 
-    // Recursive delete
-    fs.rmSync(instancePath, { recursive: true, force: true });
+    await this.contextSyncLock.withLock(profileName, async () => {
+      await this.pluginLayoutLock.withNamedLock('__plugin-layout__', async () => {
+        if (!fs.existsSync(instancePath)) {
+          return;
+        }
+
+        fs.rmSync(instancePath, { recursive: true, force: true });
+      });
+    });
   }
 
   /**
@@ -166,6 +180,10 @@ class InstanceManager {
     }
 
     return fs.readdirSync(this.instancesDir).filter((name) => {
+      if (name.startsWith('.')) {
+        return false;
+      }
+
       const instancePath = path.join(this.instancesDir, name);
       return fs.statSync(instancePath).isDirectory();
     });

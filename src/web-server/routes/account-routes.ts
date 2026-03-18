@@ -324,7 +324,7 @@ router.delete('/reset-default', (_req: Request, res: Response): void => {
 /**
  * DELETE /api/accounts/:name - Delete an account
  */
-router.delete('/:name', (req: Request, res: Response): void => {
+router.delete('/:name', async (req: Request, res: Response): Promise<void> => {
   try {
     const { name } = req.params;
 
@@ -371,7 +371,7 @@ router.delete('/:name', (req: Request, res: Response): void => {
     }
 
     // Match CLI remove ordering: delete instance first, metadata second.
-    instanceMgr.deleteInstance(name);
+    await instanceMgr.deleteInstance(name);
 
     if (existsUnified) {
       registry.removeAccountUnified(name);

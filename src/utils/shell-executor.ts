@@ -125,7 +125,7 @@ export function execClaude(
 
   if (profileType !== 'account') {
     try {
-      new SharedManager().normalizeSharedPluginMetadataPaths(env.CLAUDE_CONFIG_DIR);
+      new SharedManager().normalizeSharedPluginMetadataPathsLocked(env.CLAUDE_CONFIG_DIR);
     } catch {
       // Best-effort normalization should never block Claude launch.
     }

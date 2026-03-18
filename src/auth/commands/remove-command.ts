@@ -68,7 +68,7 @@ export async function handleRemove(ctx: CommandContext, args: string[]): Promise
     }
 
     // Delete instance
-    ctx.instanceMgr.deleteInstance(profileName);
+    await ctx.instanceMgr.deleteInstance(profileName);
 
     // Delete profile from appropriate config
     if (isUnifiedMode() && existsUnified) {

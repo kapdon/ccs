@@ -1,18 +1,11 @@
-/**
- * Unit tests for SharedManager - plugin registry path normalization
- */
-import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
+import * as path from 'path';
 import SharedManager, {
+  normalizePluginMetadataContent,
   normalizePluginMetadataPathString,
 } from '../../src/management/shared-manager';
-
-// Test the normalization regex pattern directly
-const normalizePluginPaths = (content: string): string => {
-  return normalizePluginMetadataPathString(content);
-};
 
 describe('SharedManager', () => {
   let tempRoot = '';
@@ -20,6 +13,28 @@ describe('SharedManager', () => {
   let originalCcsHome: string | undefined;
   let originalCcsDir: string | undefined;
   let originalPlatform: PropertyDescriptor | undefined;
+
+  const claudeDir = () => path.join(tempRoot, '.claude');
+  const ccsDir = () => path.join(tempRoot, '.ccs');
+  const instanceDir = (name: string) => path.join(ccsDir(), 'instances', name);
+  const marketplacePath = (configDir: string, name = 'claude-code-plugins') =>
+    path.join(configDir, 'plugins', 'marketplaces', name);
+  const readJson = (filePath: string) =>
+    JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+
+  function ensureMarketplacePayload(configDir: string, name = 'claude-code-plugins'): void {
+    fs.mkdirSync(marketplacePath(configDir, name), { recursive: true });
+  }
+
+  function writeJson(filePath: string, value: unknown): void {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf8');
+  }
+
+  function readMarketplaceLocation(filePath: string, name = 'claude-code-plugins'): string {
+    const parsed = readJson(filePath) as Record<string, { installLocation?: string }>;
+    return parsed[name]?.installLocation ?? '';
+  }
 
   beforeEach(() => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ccs-shared-manager-test-'));
@@ -55,218 +70,244 @@ describe('SharedManager', () => {
     }
   });
 
-  describe('normalizePluginRegistryPaths', () => {
-    describe('regex pattern', () => {
-      it('should replace instance paths with canonical claude path', () => {
-        const input = '/home/user/.ccs/instances/ck/plugins/cache/plugin/0.0.2';
-        const expected = '/home/user/.claude/plugins/cache/plugin/0.0.2';
-        expect(normalizePluginPaths(input)).toBe(expected);
-      });
+  describe('plugin metadata path normalization', () => {
+    it('rewrites instance plugin paths to the requested target config dir', () => {
+      const targetConfigDir = path.join('/home/user', '.claude');
+      const input = '/home/user/.ccs/instances/work/plugins/cache/plugin/0.0.2';
 
-      it('should handle different instance names', () => {
-        const inputs = [
-          '/home/user/.ccs/instances/work/plugins/cache/plugin/1.0.0',
-          '/home/user/.ccs/instances/personal/plugins/cache/plugin/1.0.0',
-          '/home/user/.ccs/instances/test-account/plugins/cache/plugin/1.0.0',
-        ];
-        for (const input of inputs) {
-          expect(normalizePluginPaths(input)).toContain('/.claude/');
-          expect(normalizePluginPaths(input)).not.toContain('/.ccs/instances/');
-        }
-      });
+      expect(normalizePluginMetadataPathString(input, targetConfigDir)).toBe(
+        '/home/user/.claude/plugins/cache/plugin/0.0.2'
+      );
+    });
 
-      it('should handle multiple occurrences', () => {
-        const input = JSON.stringify({
+    it('rewrites shared plugin paths to an instance-local target config dir', () => {
+      const targetConfigDir = instanceDir('personal');
+      const input = path.join(tempRoot, '.ccs', 'shared', 'plugins', 'marketplaces', 'official');
+
+      expect(normalizePluginMetadataPathString(input, targetConfigDir)).toBe(
+        marketplacePath(targetConfigDir, 'official')
+      );
+    });
+
+    it('normalizes all matching JSON string values without changing the structure', () => {
+      const targetConfigDir = instanceDir('work');
+      const input = JSON.stringify(
+        {
           plugins: {
-            'plugin-a': [{ installPath: '/home/user/.ccs/instances/ck/plugins/a' }],
-            'plugin-b': [{ installPath: '/home/user/.ccs/instances/work/plugins/b' }],
-          },
-        });
-        const result = normalizePluginPaths(input);
-        expect(result).not.toContain('/.ccs/instances/');
-        expect(result.match(/\.claude/g)?.length).toBe(2);
-      });
-
-      it('should not modify already-canonical paths', () => {
-        const input = '/home/user/.claude/plugins/cache/plugin/0.0.2';
-        expect(normalizePluginPaths(input)).toBe(input);
-      });
-
-      it('should be idempotent', () => {
-        const input = '/home/user/.ccs/instances/ck/plugins/cache/plugin/0.0.2';
-        const first = normalizePluginPaths(input);
-        const second = normalizePluginPaths(first);
-        expect(first).toBe(second);
-      });
-
-      it('should preserve JSON structure', () => {
-        const original = {
-          version: 2,
-          plugins: {
-            'claude-hud@claude-hud': [
+            'plugin-a': [
               {
-                scope: 'user',
-                installPath:
-                  '/home/kai/.ccs/instances/ck/plugins/cache/claude-hud/claude-hud/0.0.2',
-                version: '0.0.2',
+                installPath: path.join(
+                  tempRoot,
+                  '.ccs',
+                  'instances',
+                  'old',
+                  'plugins',
+                  'cache',
+                  'plugin-a'
+                ),
               },
             ],
           },
-        };
-        const input = JSON.stringify(original, null, 2);
-        const result = normalizePluginPaths(input);
-
-        // Should be valid JSON
-        expect(() => JSON.parse(result)).not.toThrow();
-
-        // Should have normalized path
-        const parsed = JSON.parse(result);
-        expect(parsed.plugins['claude-hud@claude-hud'][0].installPath).toBe(
-          '/home/kai/.claude/plugins/cache/claude-hud/claude-hud/0.0.2'
-        );
-      });
-
-      it('should normalize marketplace installLocation values', () => {
-        const original = {
-          'claude-code-plugins': {
-            installLocation:
-              '/home/kai/.ccs/instances/work/plugins/marketplaces/claude-code-plugins',
+          marketplaces: {
+            official: {
+              installLocation: path.join(
+                tempRoot,
+                '.claude',
+                'plugins',
+                'marketplaces',
+                'official'
+              ),
+            },
           },
-        };
-        const input = JSON.stringify(original, null, 2);
-        const result = normalizePluginPaths(input);
+        },
+        null,
+        2
+      );
 
-        expect(() => JSON.parse(result)).not.toThrow();
+      const normalized = JSON.parse(normalizePluginMetadataContent(input, targetConfigDir)) as {
+        plugins: { 'plugin-a': [{ installPath: string }] };
+        marketplaces: { official: { installLocation: string } };
+      };
 
-        const parsed = JSON.parse(result);
-        expect(parsed['claude-code-plugins'].installLocation).toBe(
-          '/home/kai/.claude/plugins/marketplaces/claude-code-plugins'
-        );
-      });
+      expect(normalized.plugins['plugin-a'][0].installPath).toBe(
+        path.join(targetConfigDir, 'plugins', 'cache', 'plugin-a')
+      );
+      expect(normalized.marketplaces.official.installLocation).toBe(
+        marketplacePath(targetConfigDir, 'official')
+      );
     });
 
-    describe('edge cases', () => {
-      it('should handle empty object', () => {
-        const input = JSON.stringify({});
-        expect(normalizePluginPaths(input)).toBe(input);
-      });
+    it('preserves paths already rooted at the target config dir', () => {
+      const targetConfigDir = instanceDir('work');
+      const input = path.join(targetConfigDir, 'plugins', 'cache', 'plugin-a');
 
-      it('should handle plugins without installPath', () => {
-        const input = JSON.stringify({ plugins: {} });
-        expect(normalizePluginPaths(input)).toBe(input);
-      });
+      expect(normalizePluginMetadataPathString(input, targetConfigDir)).toBe(input);
+    });
 
-      it('should handle Windows-style paths (backslash)', () => {
-        const input = 'C:\\Users\\user\\.ccs\\instances\\ck\\plugins\\cache';
-        expect(normalizePluginPaths(input)).toBe('C:\\Users\\user\\.claude\\plugins\\cache');
-      });
+    it('handles Windows path separators', () => {
+      const targetConfigDir = 'C:\\Users\\user\\.claude';
+      const input = 'C:\\Users\\user\\.ccs\\instances\\work\\plugins\\marketplaces\\official';
+
+      expect(normalizePluginMetadataPathString(input, targetConfigDir)).toBe(
+        'C:\\Users\\user\\.claude\\plugins\\marketplaces\\official'
+      );
     });
   });
 
-  describe('normalizeMarketplaceRegistryPaths', () => {
-    it('rewrites known_marketplaces.json on disk', () => {
-      const pluginsDir = path.join(tempRoot, '.claude', 'plugins');
-      fs.mkdirSync(pluginsDir, { recursive: true });
+  describe('marketplace registry ownership', () => {
+    it('writes global and instance registries with different authoritative install locations', () => {
+      const globalRegistryPath = path.join(claudeDir(), 'plugins', 'known_marketplaces.json');
+      ensureMarketplacePayload(claudeDir());
+      writeJson(globalRegistryPath, {
+        'claude-code-plugins': {
+          installLocation: path.join(
+            tempRoot,
+            '.ccs',
+            'instances',
+            'work',
+            'plugins',
+            'marketplaces',
+            'claude-code-plugins'
+          ),
+        },
+      });
 
-      const registryPath = path.join(pluginsDir, 'known_marketplaces.json');
-      fs.writeFileSync(
-        registryPath,
-        JSON.stringify(
-          {
-            'claude-code-plugins': {
-              installLocation:
-                '/home/kai/.ccs/instances/work/plugins/marketplaces/claude-code-plugins',
-            },
-          },
-          null,
-          2
-        ),
-        'utf8'
-      );
-
-      const manager = new SharedManager();
-      manager.normalizeMarketplaceRegistryPaths();
-
-      const normalized = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-      expect(normalized['claude-code-plugins'].installLocation).toBe(
-        '/home/kai/.claude/plugins/marketplaces/claude-code-plugins'
-      );
-    });
-
-    it('rewrites Windows-style known_marketplaces.json paths on disk', () => {
-      const pluginsDir = path.join(tempRoot, '.claude', 'plugins');
-      fs.mkdirSync(pluginsDir, { recursive: true });
-
-      const registryPath = path.join(pluginsDir, 'known_marketplaces.json');
-      fs.writeFileSync(
-        registryPath,
-        JSON.stringify(
-          {
-            'claude-code-plugins': {
-              installLocation:
-                'C:\\Users\\kai\\.ccs\\instances\\work\\plugins\\marketplaces\\claude-code-plugins',
-            },
-          },
-          null,
-          2
-        ),
-        'utf8'
-      );
+      const instancePath = instanceDir('personal');
+      fs.mkdirSync(instancePath, { recursive: true });
 
       const manager = new SharedManager();
-      manager.normalizeMarketplaceRegistryPaths();
+      manager.linkSharedDirectories(instancePath);
 
-      const normalized = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-      expect(normalized['claude-code-plugins'].installLocation).toBe(
-        'C:\\Users\\kai\\.claude\\plugins\\marketplaces\\claude-code-plugins'
-      );
+      const instanceRegistryPath = path.join(instancePath, 'plugins', 'known_marketplaces.json');
+      expect(readMarketplaceLocation(globalRegistryPath)).toBe(marketplacePath(claudeDir()));
+      expect(readMarketplaceLocation(instanceRegistryPath)).toBe(marketplacePath(instancePath));
+      expect(fs.lstatSync(path.join(instancePath, 'plugins')).isSymbolicLink()).toBe(false);
+      expect(fs.lstatSync(instanceRegistryPath).isSymbolicLink()).toBe(false);
     });
 
-    it('normalizes copied shared and instance metadata under Windows fallback', () => {
+    it('self-heals missing installLocation from discovered marketplace payloads', () => {
+      const manager = new SharedManager();
+      const instancePath = instanceDir('work');
+      fs.mkdirSync(instancePath, { recursive: true });
+      manager.linkSharedDirectories(instancePath);
+
+      fs.mkdirSync(marketplacePath(claudeDir()), { recursive: true });
+      writeJson(path.join(instancePath, 'plugins', 'known_marketplaces.json'), {
+        'claude-code-plugins': {
+          label: 'Official marketplace',
+        },
+      });
+
+      manager.normalizeMarketplaceRegistryPaths(instancePath);
+
+      const repaired = readJson(
+        path.join(instancePath, 'plugins', 'known_marketplaces.json')
+      ) as Record<string, { label?: string; installLocation?: string }>;
+      expect(repaired['claude-code-plugins']).toEqual({
+        label: 'Official marketplace',
+        installLocation: marketplacePath(instancePath),
+      });
+    });
+
+    it('prunes stale marketplace entries whose payload directories no longer exist', () => {
+      const manager = new SharedManager();
+      const instancePath = instanceDir('work');
+      fs.mkdirSync(instancePath, { recursive: true });
+      manager.linkSharedDirectories(instancePath);
+
+      fs.mkdirSync(marketplacePath(claudeDir(), 'claude-code-plugins'), { recursive: true });
+      writeJson(path.join(instancePath, 'plugins', 'known_marketplaces.json'), {
+        'claude-code-plugins': {
+          installLocation: marketplacePath(instancePath, 'claude-code-plugins'),
+          label: 'Official marketplace',
+        },
+        stale: {
+          installLocation: marketplacePath(instancePath, 'stale'),
+          label: 'Stale marketplace',
+        },
+      });
+
+      manager.normalizeMarketplaceRegistryPaths(instancePath);
+
+      const reconciled = readJson(
+        path.join(instancePath, 'plugins', 'known_marketplaces.json')
+      ) as Record<string, { label?: string; installLocation?: string }>;
+      expect(reconciled['claude-code-plugins']).toEqual({
+        installLocation: marketplacePath(instancePath, 'claude-code-plugins'),
+        label: 'Official marketplace',
+      });
+      expect(reconciled.stale).toBeUndefined();
+    });
+
+    it('warns and skips malformed marketplace registries while keeping valid sources', () => {
+      const manager = new SharedManager();
+      const instancePath = instanceDir('work');
+      fs.mkdirSync(instancePath, { recursive: true });
+      manager.linkSharedDirectories(instancePath);
+
+      const globalRegistryPath = path.join(claudeDir(), 'plugins', 'known_marketplaces.json');
+      ensureMarketplacePayload(claudeDir());
+      writeJson(globalRegistryPath, {
+        'claude-code-plugins': {
+          installLocation: path.join(
+            tempRoot,
+            '.ccs',
+            'instances',
+            'work',
+            'plugins',
+            'marketplaces',
+            'claude-code-plugins'
+          ),
+          label: 'Official marketplace',
+        },
+      });
+
+      const malformedRegistryPath = path.join(instancePath, 'plugins', 'known_marketplaces.json');
+      fs.writeFileSync(malformedRegistryPath, '{invalid-json', 'utf8');
+      const logSpy = spyOn(console, 'log').mockImplementation(() => {});
+
+      manager.normalizeMarketplaceRegistryPaths(instancePath);
+
+      expect(readMarketplaceLocation(malformedRegistryPath)).toBe(marketplacePath(instancePath));
+      expect(
+        logSpy.mock.calls.some(
+          ([message]) =>
+            String(message).includes('Skipping malformed marketplace registry') &&
+            String(message).includes(malformedRegistryPath)
+        )
+      ).toBe(true);
+    });
+
+    it('keeps the instance-local registry valid under Windows copy fallback', () => {
       Object.defineProperty(process, 'platform', { value: 'win32' });
       spyOn(fs, 'symlinkSync').mockImplementation(() => {
         throw Object.assign(new Error('simulated symlink failure'), { code: 'EPERM' });
       });
 
-      const pluginsDir = path.join(tempRoot, '.claude', 'plugins');
-      fs.mkdirSync(pluginsDir, { recursive: true });
+      const globalRegistryPath = path.join(claudeDir(), 'plugins', 'known_marketplaces.json');
+      ensureMarketplacePayload(claudeDir());
+      writeJson(globalRegistryPath, {
+        'claude-code-plugins': {
+          installLocation: path.join(
+            tempRoot,
+            '.claude',
+            'plugins',
+            'marketplaces',
+            'claude-code-plugins'
+          ),
+        },
+      });
 
-      const registryPath = path.join(pluginsDir, 'known_marketplaces.json');
-      fs.writeFileSync(
-        registryPath,
-        JSON.stringify(
-          {
-            'claude-code-plugins': {
-              installLocation:
-                '/home/kai/.ccs/instances/work/plugins/marketplaces/claude-code-plugins',
-            },
-          },
-          null,
-          2
-        ),
-        'utf8'
-      );
+      const instancePath = instanceDir('personal');
+      fs.mkdirSync(instancePath, { recursive: true });
 
       const manager = new SharedManager();
-      const instancePath = path.join(tempRoot, '.ccs', 'instances', 'personal');
-      fs.mkdirSync(instancePath, { recursive: true });
       manager.linkSharedDirectories(instancePath);
 
-      const expected = '/home/kai/.claude/plugins/marketplaces/claude-code-plugins';
-      const claudeRegistry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-      const sharedRegistry = JSON.parse(
-        fs.readFileSync(
-          path.join(tempRoot, '.ccs', 'shared', 'plugins', 'known_marketplaces.json'),
-          'utf8'
-        )
-      );
-      const instanceRegistry = JSON.parse(
-        fs.readFileSync(path.join(instancePath, 'plugins', 'known_marketplaces.json'), 'utf8')
-      );
-
-      expect(claudeRegistry['claude-code-plugins'].installLocation).toBe(expected);
-      expect(sharedRegistry['claude-code-plugins'].installLocation).toBe(expected);
-      expect(instanceRegistry['claude-code-plugins'].installLocation).toBe(expected);
+      const instanceRegistryPath = path.join(instancePath, 'plugins', 'known_marketplaces.json');
+      expect(readMarketplaceLocation(globalRegistryPath)).toBe(marketplacePath(claudeDir()));
+      expect(readMarketplaceLocation(instanceRegistryPath)).toBe(marketplacePath(instancePath));
+      expect(fs.existsSync(path.join(instancePath, 'plugins', 'marketplaces'))).toBe(true);
     });
   });
 });

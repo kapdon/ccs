@@ -168,7 +168,7 @@ async function resolveExtensionEnv(
       profileType: result.type,
       target: 'claude',
     });
-    new SharedManager().normalizeSharedPluginMetadataPaths(continuity.claudeConfigDir);
+    new SharedManager().normalizeSharedPluginMetadataPathsLocked(continuity.claudeConfigDir);
     if (continuity.claudeConfigDir) {
       notes.push(`Default profile inherits continuity from account "${continuity.sourceAccount}".`);
       return {
@@ -250,7 +250,7 @@ async function resolveExtensionEnv(
     );
   }
 
-  new SharedManager().normalizeSharedPluginMetadataPaths(env.CLAUDE_CONFIG_DIR);
+  new SharedManager().normalizeSharedPluginMetadataPathsLocked(env.CLAUDE_CONFIG_DIR);
 
   if (result.type === 'copilot') {
     warnings.push(
