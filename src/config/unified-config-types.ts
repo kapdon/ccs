@@ -22,8 +22,10 @@ import { CLIPROXY_PROVIDER_IDS } from '../cliproxy/provider-capabilities';
  * Version 6 = Customizable auth tokens (API key and management secret)
  * Version 7 = Quota management for hybrid auto+manual account control
  * Version 8 = Thinking/reasoning budget configuration
+ * Version 9 = Real WebSearch backends (DuckDuckGo/Brave) with legacy CLI fallback
+ * Version 10 = Exa + Tavily WebSearch backends
  */
-export const UNIFIED_CONFIG_VERSION = 8;
+export const UNIFIED_CONFIG_VERSION = 10;
 
 /**
  * Supported CLIProxy providers.
@@ -236,10 +238,50 @@ export interface PreferencesConfig {
 }
 
 /**
+ * DuckDuckGo WebSearch configuration.
+ */
+export interface DuckDuckGoWebSearchConfig {
+  /** Enable DuckDuckGo HTML search fallback (default: true) */
+  enabled?: boolean;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
+ * Brave WebSearch configuration.
+ */
+export interface BraveWebSearchConfig {
+  /** Enable Brave Search when BRAVE_API_KEY is available (default: false) */
+  enabled?: boolean;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
+ * Exa WebSearch configuration.
+ */
+export interface ExaWebSearchConfig {
+  /** Enable Exa Search when EXA_API_KEY is available (default: false) */
+  enabled?: boolean;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
+ * Tavily WebSearch configuration.
+ */
+export interface TavilyWebSearchConfig {
+  /** Enable Tavily Search when TAVILY_API_KEY is available (default: false) */
+  enabled?: boolean;
+  /** Number of results to fetch (default: 5) */
+  max_results?: number;
+}
+
+/**
  * Gemini CLI WebSearch configuration.
  */
 export interface GeminiWebSearchConfig {
-  /** Enable Gemini CLI for WebSearch (default: true) */
+  /** Enable Gemini CLI legacy fallback (default: false) */
   enabled?: boolean;
   /** Model to use (default: gemini-2.5-flash) */
   model?: string;
@@ -251,7 +293,7 @@ export interface GeminiWebSearchConfig {
  * Grok CLI WebSearch configuration.
  */
 export interface GrokWebSearchConfig {
-  /** Enable Grok CLI for WebSearch (default: false - requires GROK_API_KEY) */
+  /** Enable Grok CLI legacy fallback (default: false - requires GROK_API_KEY) */
   enabled?: boolean;
   /** Timeout in seconds (default: 55) */
   timeout?: number;
@@ -261,7 +303,7 @@ export interface GrokWebSearchConfig {
  * OpenCode CLI WebSearch configuration.
  */
 export interface OpenCodeWebSearchConfig {
-  /** Enable OpenCode CLI for WebSearch (default: false) */
+  /** Enable OpenCode CLI legacy fallback (default: false) */
   enabled?: boolean;
   /** Model to use (default: opencode/grok-code) */
   model?: string;
@@ -271,14 +313,22 @@ export interface OpenCodeWebSearchConfig {
 
 /**
  * WebSearch providers configuration.
- * Supports Gemini CLI, Grok CLI, and OpenCode.
+ * Uses deterministic search backends first, with optional legacy CLI fallback.
  */
 export interface WebSearchProvidersConfig {
-  /** Gemini CLI - uses google_web_search tool (FREE tier: 1000 req/day) */
+  /** Exa Search API - API-backed search with strong relevance and content extraction */
+  exa?: ExaWebSearchConfig;
+  /** Tavily Search API - API-backed search optimized for agent/tool usage */
+  tavily?: TavilyWebSearchConfig;
+  /** DuckDuckGo HTML search - zero setup default backend */
+  duckduckgo?: DuckDuckGoWebSearchConfig;
+  /** Brave Search API - higher quality results when BRAVE_API_KEY is set */
+  brave?: BraveWebSearchConfig;
+  /** Gemini CLI - optional legacy LLM fallback */
   gemini?: GeminiWebSearchConfig;
-  /** Grok CLI - xAI web search (requires GROK_API_KEY) */
+  /** Grok CLI - optional legacy LLM fallback */
   grok?: GrokWebSearchConfig;
-  /** OpenCode - built-in web search (FREE via OpenCode Zen) */
+  /** OpenCode - optional legacy LLM fallback */
   opencode?: OpenCodeWebSearchConfig;
 }
 
@@ -441,8 +491,8 @@ export const DEFAULT_GLOBAL_ENV: Record<string, string> = {
 
 /**
  * WebSearch configuration.
- * Uses CLI tools (Gemini CLI, Grok CLI, OpenCode) for third-party profiles.
- * Third-party providers don't have server-side WebSearch access.
+ * Uses deterministic local backends for third-party profiles.
+ * Legacy AI CLI fallbacks remain available for compatibility only.
  */
 export interface WebSearchConfig {
   /** Master switch - enable/disable WebSearch (default: true) */
@@ -825,8 +875,24 @@ export function createEmptyUnifiedConfig(): UnifiedConfig {
     websearch: {
       enabled: true,
       providers: {
-        gemini: {
+        exa: {
+          enabled: false,
+          max_results: 5,
+        },
+        tavily: {
+          enabled: false,
+          max_results: 5,
+        },
+        duckduckgo: {
           enabled: true,
+          max_results: 5,
+        },
+        brave: {
+          enabled: false,
+          max_results: 5,
+        },
+        gemini: {
+          enabled: false,
           model: 'gemini-2.5-flash',
           timeout: 55,
         },

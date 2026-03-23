@@ -29,7 +29,29 @@ export function getWebSearchHookEnv(): Record<string, string> {
   env.CCS_WEBSEARCH_ENABLED = '1';
 
   // Pass individual provider enabled states
-  // Hook will only use providers that are BOTH enabled AND installed
+  // Hook will only use providers that are BOTH enabled AND ready.
+  if (wsConfig.providers?.exa?.enabled) {
+    env.CCS_WEBSEARCH_EXA = '1';
+    env.CCS_WEBSEARCH_EXA_MAX_RESULTS = String(wsConfig.providers.exa.max_results || 5);
+  }
+
+  if (wsConfig.providers?.tavily?.enabled) {
+    env.CCS_WEBSEARCH_TAVILY = '1';
+    env.CCS_WEBSEARCH_TAVILY_MAX_RESULTS = String(wsConfig.providers.tavily.max_results || 5);
+  }
+
+  if (wsConfig.providers?.duckduckgo?.enabled) {
+    env.CCS_WEBSEARCH_DUCKDUCKGO = '1';
+    env.CCS_WEBSEARCH_DUCKDUCKGO_MAX_RESULTS = String(
+      wsConfig.providers.duckduckgo.max_results || 5
+    );
+  }
+
+  if (wsConfig.providers?.brave?.enabled) {
+    env.CCS_WEBSEARCH_BRAVE = '1';
+    env.CCS_WEBSEARCH_BRAVE_MAX_RESULTS = String(wsConfig.providers.brave.max_results || 5);
+  }
+
   if (wsConfig.providers?.gemini?.enabled) {
     env.CCS_WEBSEARCH_GEMINI = '1';
     if (wsConfig.providers.gemini.model) {
