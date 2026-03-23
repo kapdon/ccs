@@ -241,6 +241,25 @@ const resources = {
           'Access {{modelCountLabel}} models from OpenAI, Anthropic, Google, Meta and more - all through one API.',
         featureOneApi: 'One API, all providers',
         featureTierMapping: 'Model tier mapping',
+        profileCount: '{{count}} profile',
+        profileCount_other: '{{count}} profiles',
+        selectProfileTitle: 'Select an API profile',
+        summaryDescriptionWithProfiles:
+          'You already have {{count}} profile in this workspace. Select one from the left rail to edit it, or create another profile from here.',
+        summaryDescriptionWithProfiles_other:
+          'You already have {{count}} profiles in this workspace. Select one from the left rail to edit it, or create another profile from here.',
+        summaryDescriptionNoProfiles:
+          'Use API Profiles for Anthropic-compatible endpoints. Use AI Providers for Gemini, Codex, Claude, Vertex, and OpenAI-compatible connectors.',
+        openrouterModelsBadge: '{{modelCountLabel}} OpenRouter models',
+        runtimeProviderBadge: 'Runtime provider setup',
+        runtimeProviderTitle: 'Open AI Providers',
+        runtimeProviderDescription:
+          'Manage shared provider keys and runtime connectors before creating standalone API Profiles.',
+        runtimeProviderFeatureConnectors:
+          'Gemini, Codex, Claude, Vertex, and OpenAI-compatible connectors',
+        runtimeProviderFeatureSecrets: 'Shared secrets stay outside individual API profiles',
+        runtimeProviderFooter:
+          'Best when multiple profiles should share one provider configuration.',
         createOpenRouterProfile: 'Create OpenRouter Profile',
         getApiKeyAt: 'Get your API key at',
         or: 'or',
@@ -1420,6 +1439,24 @@ const resources = {
           '通过一个 API 即可访问来自 OpenAI、Anthropic、Google、Meta 等的 {{modelCountLabel}} 个模型。',
         featureOneApi: '一个 API，接入全部提供商',
         featureTierMapping: '模型档位映射',
+        profileCount: '{{count}} 个 API 配置',
+        profileCount_other: '{{count}} 个 API 配置',
+        selectProfileTitle: '选择一个 API 配置',
+        summaryDescriptionWithProfiles:
+          '此工作区中已存在 {{count}} 个 API 配置。请从左侧栏选择一个进行编辑，或在此继续创建新的配置。',
+        summaryDescriptionWithProfiles_other:
+          '此工作区中已存在 {{count}} 个 API 配置。请从左侧栏选择一个进行编辑，或在此继续创建新的配置。',
+        summaryDescriptionNoProfiles:
+          'API 配置适用于 Anthropic 兼容端点。AI Providers 适用于 Gemini、Codex、Claude、Vertex 以及 OpenAI 兼容连接器。',
+        openrouterModelsBadge: '{{modelCountLabel}} 个 OpenRouter 模型',
+        runtimeProviderBadge: '运行时提供商设置',
+        runtimeProviderTitle: '打开 AI Providers',
+        runtimeProviderDescription:
+          '先管理共享的提供商密钥和运行时连接器，再创建独立的 API 配置。',
+        runtimeProviderFeatureConnectors:
+          'Gemini、Codex、Claude、Vertex 以及 OpenAI 兼容连接器',
+        runtimeProviderFeatureSecrets: '共享密钥与单个 API 配置分离存放',
+        runtimeProviderFooter: '当多个配置需要共享同一提供商设置时最适合使用。',
         createOpenRouterProfile: '创建 OpenRouter 配置',
         getApiKeyAt: '在此获取 API Key：',
         or: '或',
@@ -2566,6 +2603,25 @@ const resources = {
           'Truy cập các mô hình {{modelCountLabel}} từ OpenAI, Anthropic, Google, Meta, v.v. - tất cả đều thông qua một API.',
         featureOneApi: 'Một API cho mọi nhà cung cấp',
         featureTierMapping: 'Ánh xạ tầng mô hình',
+        profileCount: '{{count}} hồ sơ',
+        profileCount_other: '{{count}} hồ sơ',
+        selectProfileTitle: 'Chọn một hồ sơ API',
+        summaryDescriptionWithProfiles:
+          'Bạn đã có {{count}} hồ sơ trong workspace này. Chọn một hồ sơ ở thanh bên trái để chỉnh sửa, hoặc tạo thêm hồ sơ mới tại đây.',
+        summaryDescriptionWithProfiles_other:
+          'Bạn đã có {{count}} hồ sơ trong workspace này. Chọn một hồ sơ ở thanh bên trái để chỉnh sửa, hoặc tạo thêm hồ sơ mới tại đây.',
+        summaryDescriptionNoProfiles:
+          'Dùng API Profiles cho các endpoint tương thích Anthropic. Dùng AI Providers cho Gemini, Codex, Claude, Vertex và các connector tương thích OpenAI.',
+        openrouterModelsBadge: '{{modelCountLabel}} mô hình OpenRouter',
+        runtimeProviderBadge: 'Thiết lập nhà cung cấp runtime',
+        runtimeProviderTitle: 'Mở AI Providers',
+        runtimeProviderDescription:
+          'Quản lý khóa nhà cung cấp dùng chung và các connector runtime trước khi tạo API Profiles độc lập.',
+        runtimeProviderFeatureConnectors:
+          'Gemini, Codex, Claude, Vertex và các connector tương thích OpenAI',
+        runtimeProviderFeatureSecrets: 'Khóa dùng chung tách biệt khỏi từng API Profile',
+        runtimeProviderFooter:
+          'Phù hợp nhất khi nhiều hồ sơ cần dùng chung một cấu hình nhà cung cấp.',
         createOpenRouterProfile: 'Tạo hồ sơ OpenRouter',
         getApiKeyAt: 'Nhận khóa API của bạn tại',
         or: 'hoặc',
@@ -3767,6 +3823,26 @@ const resources = {
           'OpenAI、Anthropic、Google、Meta などの {{modelCountLabel}} モデルを、1 つの API で利用できます。',
         featureOneApi: '1 つの API で全プロバイダー',
         featureTierMapping: 'モデルティアマッピング',
+        profileCount: '{{count}} 個の API プロファイル',
+        profileCount_other: '{{count}} 個の API プロファイル',
+        selectProfileTitle: 'API プロファイルを選択',
+        summaryDescriptionWithProfiles:
+          'このワークスペースには既に {{count}} 個の API プロファイルがあります。左側レールから 1 つ選んで編集するか、ここから新しいプロファイルを作成してください。',
+        summaryDescriptionWithProfiles_other:
+          'このワークスペースには既に {{count}} 個の API プロファイルがあります。左側レールから 1 つ選んで編集するか、ここから新しいプロファイルを作成してください。',
+        summaryDescriptionNoProfiles:
+          'API Profiles は Anthropic 互換エンドポイント向けです。AI Providers は Gemini、Codex、Claude、Vertex、OpenAI 互換コネクタ向けです。',
+        openrouterModelsBadge: '{{modelCountLabel}} 個の OpenRouter モデル',
+        runtimeProviderBadge: 'ランタイムプロバイダー設定',
+        runtimeProviderTitle: 'AI Providers を開く',
+        runtimeProviderDescription:
+          '個別の API プロファイルを作成する前に、共有プロバイダーキーとランタイムコネクタを管理します。',
+        runtimeProviderFeatureConnectors:
+          'Gemini、Codex、Claude、Vertex、OpenAI 互換コネクタ',
+        runtimeProviderFeatureSecrets:
+          '共有シークレットを個別の API プロファイルから切り離して管理',
+        runtimeProviderFooter:
+          '複数のプロファイルで 1 つのプロバイダー設定を共有したい場合に最適です。',
         createOpenRouterProfile: 'OpenRouter プロファイルを作成',
         getApiKeyAt: 'API キー取得:',
         or: 'または',
