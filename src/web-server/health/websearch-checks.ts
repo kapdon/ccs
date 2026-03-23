@@ -1,7 +1,7 @@
 /**
- * WebSearch CLI Health Checks
+ * WebSearch Health Checks
  *
- * Check WebSearch CLI providers (Gemini CLI, Grok CLI).
+ * Check WebSearch providers (real backends + legacy fallback).
  */
 
 import { getWebSearchCliProviders, hasAnyWebSearchCli } from '../../utils/websearch-manager';
@@ -15,37 +15,35 @@ export function checkWebSearchClis(): HealthCheck[] {
   const checks: HealthCheck[] = [];
 
   for (const provider of providers) {
-    if (provider.installed) {
-      const freeTag = provider.freeTier ? ' (FREE)' : '';
+    if (provider.enabled && provider.available) {
       checks.push({
         id: `websearch-${provider.id}`,
         name: provider.name,
         status: 'ok',
-        message: `v${provider.version || 'unknown'}${freeTag}`,
+        message: provider.detail,
         details: provider.description,
       });
     } else {
-      const keyNote = provider.requiresApiKey ? ` (needs ${provider.apiKeyEnvVar})` : ' (FREE)';
       checks.push({
         id: `websearch-${provider.id}`,
         name: provider.name,
         status: 'info',
-        message: `Not installed${keyNote}`,
+        message: provider.enabled ? provider.detail : 'Disabled',
         fix: provider.installCommand,
         details: provider.description,
       });
     }
   }
 
-  // Add summary check if no providers installed
+  // Add summary check if no providers are ready
   if (!hasAnyWebSearchCli()) {
     checks.push({
       id: 'websearch-summary',
       name: 'WebSearch Status',
       status: 'warning',
-      message: 'No CLI tools installed',
-      fix: 'npm install -g @google/gemini-cli (FREE)',
-      details: 'Install a WebSearch CLI for real-time web access',
+      message: 'No ready provider',
+      fix: 'Enable DuckDuckGo or set EXA_API_KEY, TAVILY_API_KEY, or BRAVE_API_KEY',
+      details: 'Third-party profiles need a local WebSearch backend.',
     });
   }
 

@@ -11,9 +11,14 @@ export interface ProviderConfig {
   enabled?: boolean;
   model?: string;
   timeout?: number;
+  max_results?: number;
 }
 
 export interface WebSearchProvidersConfig {
+  exa?: ProviderConfig;
+  tavily?: ProviderConfig;
+  duckduckgo?: ProviderConfig;
+  brave?: ProviderConfig;
   gemini?: ProviderConfig;
   grok?: ProviderConfig;
   opencode?: ProviderConfig;
@@ -25,17 +30,25 @@ export interface WebSearchConfig {
 }
 
 export interface CliStatus {
-  installed: boolean;
-  path: string | null;
+  id: 'exa' | 'tavily' | 'duckduckgo' | 'brave' | 'gemini' | 'grok' | 'opencode';
+  kind: 'backend' | 'legacy-cli';
+  name?: string;
+  enabled: boolean;
+  available: boolean;
+  command?: string;
   version: string | null;
+  installCommand?: string;
+  docsUrl?: string;
+  requiresApiKey: boolean;
+  apiKeyEnvVar?: string;
+  description: string;
+  detail: string;
 }
 
 export interface WebSearchStatus {
-  geminiCli: CliStatus;
-  grokCli: CliStatus;
-  opencodeCli: CliStatus;
+  providers: CliStatus[];
   readiness: {
-    status: 'ready' | 'unavailable';
+    status: 'ready' | 'needs_setup' | 'unavailable';
     message: string;
   };
 }

@@ -539,24 +539,26 @@ Without Developer Mode, CCS falls back to copying directories.
 
 ## WebSearch
 
-Third-party profiles (Gemini, Codex, GLM, etc.) cannot use Anthropic's native WebSearch. CCS automatically provides web search via CLI tools with automatic fallback.
+Third-party profiles (Gemini, Codex, GLM, etc.) cannot use Anthropic's native WebSearch. CCS intercepts those requests and resolves them through real local search backends instead of depending on another model CLI to do the search.
 
 ### How It Works
 
 | Profile Type | WebSearch Method |
 |--------------|------------------|
 | Claude (native) | Anthropic WebSearch API |
-| Third-party profiles | CLI Tool Fallback Chain |
+| Third-party profiles | Local Search Backend Chain |
 
-### CLI Tool Fallback Chain
+### Local Search Backend Chain
 
-CCS intercepts WebSearch requests and routes them through available CLI tools:
+CCS intercepts WebSearch requests and routes them through deterministic search providers:
 
-| Priority | Tool | Auth | Install |
-|----------|------|------|---------|
-| 1st | Gemini CLI | OAuth (free) | `npm install -g @google/gemini-cli` |
-| 2nd | OpenCode | OAuth (free) | `curl -fsSL https://opencode.ai/install \| bash` |
-| 3rd | Grok CLI | API Key | `npm install -g @vibe-kit/grok-cli` |
+| Priority | Provider | Setup | Notes |
+|----------|----------|-------|-------|
+| 1st | Exa | `EXA_API_KEY` | API-backed search with extracted content |
+| 2nd | Tavily | `TAVILY_API_KEY` | Agent-oriented search API |
+| 3rd | Brave Search | `BRAVE_API_KEY` | Cleaner API-backed results |
+| 4th | DuckDuckGo | None | Built-in default fallback |
+| 5th | Gemini / OpenCode / Grok | Optional | Legacy compatibility fallback only |
 
 ### Configuration
 
@@ -565,17 +567,21 @@ Configure via dashboard (**Settings** page) or `~/.ccs/config.yaml`:
 ```yaml
 websearch:
   enabled: true                    # Enable/disable (default: true)
-  gemini:
-    enabled: true                  # Use Gemini CLI (default: true)
-    model: gemini-2.5-flash        # Model to use
-  opencode:
-    enabled: true                  # Use OpenCode as fallback
-  grok:
-    enabled: false                 # Requires XAI_API_KEY
+  providers:
+    exa:
+      enabled: false               # Enable when EXA_API_KEY is set
+    tavily:
+      enabled: false               # Enable when TAVILY_API_KEY is set
+    duckduckgo:
+      enabled: true                # Built-in zero-setup fallback
+    brave:
+      enabled: false               # Enable when BRAVE_API_KEY is set
+    gemini:
+      enabled: false               # Optional legacy fallback
 ```
 
 > [!TIP]
-> **Gemini CLI** is recommended - free OAuth authentication with 1000 requests/day. Just run `gemini` once to authenticate via browser.
+> **DuckDuckGo** still works out of the box. Add **Exa**, **Tavily**, or **Brave Search** if you want API-backed results, then keep Gemini/OpenCode/Grok only if you explicitly want legacy fallback behavior.
 
 See [docs/websearch.md](./docs/websearch.md) for detailed configuration and troubleshooting.
 

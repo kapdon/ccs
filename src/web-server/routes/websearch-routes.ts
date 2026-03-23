@@ -5,18 +5,13 @@
 import { Router, Request, Response } from 'express';
 import { mutateUnifiedConfig, getWebSearchConfig } from '../../config/unified-config-loader';
 import type { WebSearchConfig } from '../../config/unified-config-types';
-import {
-  getWebSearchReadiness,
-  getGeminiCliStatus,
-  getGrokCliStatus,
-  getOpenCodeCliStatus,
-} from '../../utils/websearch-manager';
+import { getWebSearchReadiness, getWebSearchCliProviders } from '../../utils/websearch-manager';
 
 const router = Router();
 
 /**
  * GET /api/websearch - Get WebSearch configuration
- * Returns: WebSearchConfig with enabled, provider, fallback
+ * Returns: normalized WebSearch configuration
  */
 router.get('/', (_req: Request, res: Response): void => {
   try {
@@ -30,7 +25,6 @@ router.get('/', (_req: Request, res: Response): void => {
 /**
  * PUT /api/websearch - Update WebSearch configuration
  * Body: WebSearchConfig fields (enabled, providers)
- * Dashboard is the source of truth for provider selection.
  */
 router.put('/', (req: Request, res: Response): void => {
   const { enabled, providers } = req.body as Partial<WebSearchConfig>;
@@ -53,9 +47,40 @@ router.put('/', (req: Request, res: Response): void => {
         enabled: enabled ?? config.websearch?.enabled ?? true,
         providers: providers
           ? {
+              exa: {
+                enabled: providers.exa?.enabled ?? config.websearch?.providers?.exa?.enabled ?? false,
+                max_results:
+                  providers.exa?.max_results ?? config.websearch?.providers?.exa?.max_results ?? 5,
+              },
+              tavily: {
+                enabled:
+                  providers.tavily?.enabled ?? config.websearch?.providers?.tavily?.enabled ?? false,
+                max_results:
+                  providers.tavily?.max_results ??
+                  config.websearch?.providers?.tavily?.max_results ??
+                  5,
+              },
+              duckduckgo: {
+                enabled:
+                  providers.duckduckgo?.enabled ??
+                  config.websearch?.providers?.duckduckgo?.enabled ??
+                  true,
+                max_results:
+                  providers.duckduckgo?.max_results ??
+                  config.websearch?.providers?.duckduckgo?.max_results ??
+                  5,
+              },
+              brave: {
+                enabled:
+                  providers.brave?.enabled ?? config.websearch?.providers?.brave?.enabled ?? false,
+                max_results:
+                  providers.brave?.max_results ??
+                  config.websearch?.providers?.brave?.max_results ??
+                  5,
+              },
               gemini: {
                 enabled:
-                  providers.gemini?.enabled ?? config.websearch?.providers?.gemini?.enabled ?? true,
+                  providers.gemini?.enabled ?? config.websearch?.providers?.gemini?.enabled ?? false,
                 model:
                   providers.gemini?.model ??
                   config.websearch?.providers?.gemini?.model ??
@@ -99,31 +124,15 @@ router.put('/', (req: Request, res: Response): void => {
 
 /**
  * GET /api/websearch/status - Get WebSearch status
- * Returns: { geminiCli, grokCli, opencodeCli, readiness }
+ * Returns: provider readiness + normalized provider status list
  */
 router.get('/status', (_req: Request, res: Response): void => {
   try {
-    const geminiCli = getGeminiCliStatus();
-    const grokCli = getGrokCliStatus();
-    const opencodeCli = getOpenCodeCliStatus();
     const readiness = getWebSearchReadiness();
+    const providers = getWebSearchCliProviders();
 
     res.json({
-      geminiCli: {
-        installed: geminiCli.installed,
-        path: geminiCli.path,
-        version: geminiCli.version,
-      },
-      grokCli: {
-        installed: grokCli.installed,
-        path: grokCli.path,
-        version: grokCli.version,
-      },
-      opencodeCli: {
-        installed: opencodeCli.installed,
-        path: opencodeCli.path,
-        version: opencodeCli.version,
-      },
+      providers,
       readiness: {
         status: readiness.readiness,
         message: readiness.message,
