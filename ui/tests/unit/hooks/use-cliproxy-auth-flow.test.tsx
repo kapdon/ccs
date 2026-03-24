@@ -196,4 +196,46 @@ describe('useCliproxyAuthFlow', () => {
     expect(toast.error).toHaveBeenCalledWith('Authenticated account could not be registered');
     expect(toast.success).not.toHaveBeenCalled();
   });
+
+  it('treats status ok responses without an account as failures', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url.includes('/start-url')) {
+          return Promise.resolve(
+            createJsonResponse({
+              success: true,
+              authUrl: 'https://auth.example/status-only',
+              state: 'state-status-only',
+            })
+          );
+        }
+
+        if (url.includes('/status?state=state-status-only')) {
+          return Promise.resolve(createJsonResponse({ status: 'ok' }));
+        }
+
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      })
+    );
+
+    const { result } = renderHook(() => useCliproxyAuthFlow(), { wrapper });
+
+    await act(async () => {
+      await result.current.startAuth('codex', { startEndpoint: 'start-url' });
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.error).toBe('Authenticated account could not be registered');
+    expect(result.current.isAuthenticating).toBe(false);
+    expect(toast.error).toHaveBeenCalledWith('Authenticated account could not be registered');
+    expect(toast.success).not.toHaveBeenCalled();
+  });
 });

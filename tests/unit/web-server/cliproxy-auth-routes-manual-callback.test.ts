@@ -95,6 +95,36 @@ describe('cliproxy-auth-routes manual callback nickname persistence', () => {
     });
   }
 
+  async function getJson(route: string) {
+    return await new Promise<{ status: number; body: unknown }>((resolve, reject) => {
+      const url = new URL(`${baseUrl}${route}`);
+      const request = http.request(
+        {
+          method: 'GET',
+          hostname: url.hostname,
+          port: url.port,
+          path: `${url.pathname}${url.search}`,
+        },
+        (response) => {
+          let responseBody = '';
+          response.setEncoding('utf8');
+          response.on('data', (chunk) => {
+            responseBody += chunk;
+          });
+          response.on('end', () => {
+            resolve({
+              status: response.statusCode || 0,
+              body: responseBody ? JSON.parse(responseBody) : null,
+            });
+          });
+        }
+      );
+
+      request.on('error', reject);
+      request.end();
+    });
+  }
+
   it('persists the supplied nickname for Kiro social start-url flows after callback submission', async () => {
     mockFetch([
       {
@@ -174,5 +204,95 @@ describe('cliproxy-auth-routes manual callback nickname persistence', () => {
       error:
         'Authenticated token could not be matched to a new account. Retry the flow and choose a different nickname if needed.',
     });
+  });
+
+  it('returns 409 when status polling completes upstream but no new local token was written', async () => {
+    const tokenDir = path.join(tempHome, '.ccs', 'cliproxy', 'auth');
+    fs.mkdirSync(tokenDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(tokenDir, 'codex-existing@example.com.json'),
+      JSON.stringify({ type: 'codex', email: 'existing@example.com' }),
+      'utf8'
+    );
+
+    mockFetch([
+      {
+        url: /\/v0\/management\/codex-auth-url\?is_webui=true$/,
+        response: {
+          auth_url: 'https://auth.example.com/authorize?state=state-status-missing',
+          state: 'state-status-missing',
+        },
+      },
+      {
+        url: /\/v0\/management\/get-auth-status\?state=state-status-missing$/,
+        response: { status: 'ok' },
+      },
+    ]);
+
+    const startResponse = await postJson('/api/cliproxy/auth/codex/start-url', {});
+    expect(startResponse.status).toBe(200);
+
+    const statusResponse = await getJson(
+      '/api/cliproxy/auth/codex/status?state=state-status-missing'
+    );
+
+    expect(statusResponse.status).toBe(409);
+    expect(statusResponse.body).toEqual({
+      status: 'error',
+      error:
+        'Authentication completed upstream, but no new local token was saved for this account. Update CCS/CLIProxy and retry.',
+    });
+  });
+
+  it('registers the new account before reporting polled auth success', async () => {
+    mockFetch([
+      {
+        url: /\/v0\/management\/codex-auth-url\?is_webui=true$/,
+        response: {
+          auth_url: 'https://auth.example.com/authorize?state=state-status-ok',
+          state: 'state-status-ok',
+        },
+      },
+      {
+        url: /\/v0\/management\/get-auth-status\?state=state-status-ok$/,
+        response: { status: 'ok' },
+      },
+    ]);
+
+    const startResponse = await postJson('/api/cliproxy/auth/codex/start-url', {});
+    expect(startResponse.status).toBe(200);
+
+    const tokenDir = path.join(tempHome, '.ccs', 'cliproxy', 'auth');
+    fs.mkdirSync(tokenDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(tokenDir, 'codex-new@example.com.json'),
+      JSON.stringify({ type: 'codex', email: 'new@example.com' }),
+      'utf8'
+    );
+
+    const statusResponse = await getJson('/api/cliproxy/auth/codex/status?state=state-status-ok');
+
+    expect(statusResponse.status).toBe(200);
+    expect(statusResponse.body).toEqual({
+      status: 'ok',
+      account: {
+        id: 'new@example.com',
+        email: 'new@example.com',
+        nickname: 'new',
+        provider: 'codex',
+        isDefault: true,
+      },
+    });
+
+    const registryPath = path.join(tempHome, '.ccs', 'cliproxy', 'accounts.json');
+    const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8')) as {
+      providers: {
+        codex: {
+          accounts: Record<string, { email?: string }>;
+        };
+      };
+    };
+
+    expect(registry.providers.codex.accounts['new@example.com']?.email).toBe('new@example.com');
   });
 });

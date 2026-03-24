@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Router, Request, Response } from 'express';
 import {
   getAllAuthStatus,
@@ -22,6 +24,7 @@ import {
   pauseAccount as pauseAccountFn,
   resumeAccount as resumeAccountFn,
   touchAccount,
+  extractAccountIdFromTokenFile,
   hasAccountNameConflict,
   PROVIDERS_WITHOUT_EMAIL,
   validateNickname,
@@ -34,7 +37,11 @@ import {
 import { fetchRemoteAuthStatus } from '../../cliproxy/remote-auth-fetcher';
 import { loadOrCreateUnifiedConfig } from '../../config/unified-config-loader';
 import { tryKiroImport } from '../../cliproxy/auth/kiro-import';
-import { getProviderTokenDir, registerAccountFromToken } from '../../cliproxy/auth/token-manager';
+import {
+  getProviderTokenDir,
+  isTokenFileForProvider,
+  registerAccountFromToken,
+} from '../../cliproxy/auth/token-manager';
 import {
   CLIPROXY_CALLBACK_PROVIDER_MAP,
   CLIPROXY_AUTH_URL_PROVIDER_MAP,
@@ -56,9 +63,20 @@ import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middlewar
 
 const router = Router();
 const MANUAL_AUTH_STATE_TTL_MS = 10 * 60 * 1000;
+type ProviderTokenSnapshot = {
+  file: string;
+  mtimeMs: number;
+  email?: string;
+};
+
 const pendingManualAuthState = new Map<
   string,
-  { nickname?: string; expectedAccountId?: string; createdAt: number }
+  {
+    nickname?: string;
+    expectedAccountId?: string;
+    createdAt: number;
+    knownTokenFiles: ProviderTokenSnapshot[];
+  }
 >();
 
 // Valid providers list - derived from canonical CLIPROXY_PROFILES
@@ -88,7 +106,11 @@ function pruneExpiredManualAuthState(now = Date.now()): void {
 
 function rememberManualAuthState(
   state: string,
-  pending: { nickname?: string; expectedAccountId?: string }
+  pending: {
+    nickname?: string;
+    expectedAccountId?: string;
+    knownTokenFiles: ProviderTokenSnapshot[];
+  }
 ): void {
   pruneExpiredManualAuthState();
   pendingManualAuthState.set(state, {
@@ -97,9 +119,12 @@ function rememberManualAuthState(
   });
 }
 
-function getManualAuthState(
-  state: string | undefined
-): { nickname?: string; expectedAccountId?: string } | null {
+function getManualAuthState(state: string | undefined): {
+  nickname?: string;
+  expectedAccountId?: string;
+  createdAt: number;
+  knownTokenFiles: ProviderTokenSnapshot[];
+} | null {
   if (!state) {
     return null;
   }
@@ -113,7 +138,60 @@ function getManualAuthState(
   return {
     nickname: pending.nickname,
     expectedAccountId: pending.expectedAccountId,
+    createdAt: pending.createdAt,
+    knownTokenFiles: pending.knownTokenFiles,
   };
+}
+
+function listProviderTokenSnapshots(provider: CLIProxyProvider): ProviderTokenSnapshot[] {
+  const tokenDir = getProviderTokenDir(provider);
+  if (!fs.existsSync(tokenDir)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(tokenDir)
+    .filter((file) => file.endsWith('.json'))
+    .map((file): ProviderTokenSnapshot | null => {
+      const filePath = path.join(tokenDir, file);
+      if (!isTokenFileForProvider(filePath, provider)) {
+        return null;
+      }
+
+      let email: string | undefined;
+      try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(content) as { email?: string };
+        email = typeof parsed.email === 'string' ? parsed.email : undefined;
+      } catch {
+        email = undefined;
+      }
+
+      const stats = fs.statSync(filePath);
+      return {
+        file,
+        mtimeMs: stats.mtimeMs,
+        email,
+      };
+    })
+    .filter((snapshot): snapshot is ProviderTokenSnapshot => snapshot !== null)
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+}
+
+function findNewTokenSnapshotForPendingAuth(
+  provider: CLIProxyProvider,
+  pending: { knownTokenFiles: ProviderTokenSnapshot[] }
+): ProviderTokenSnapshot | null {
+  const knownTokenMtimes = new Map(
+    pending.knownTokenFiles.map((snapshot) => [snapshot.file, snapshot.mtimeMs])
+  );
+
+  return (
+    listProviderTokenSnapshots(provider).find((snapshot) => {
+      const knownMtime = knownTokenMtimes.get(snapshot.file);
+      return knownMtime === undefined || snapshot.mtimeMs > knownMtime + 1;
+    }) || null
+  );
 }
 
 function parseKiroMethod(raw: unknown): { method: KiroAuthMethod; invalid: boolean } {
@@ -795,6 +873,7 @@ router.post('/:provider/start-url', async (req: Request, res: Response): Promise
     if (oauthState) {
       rememberManualAuthState(oauthState, {
         nickname: nickname || undefined,
+        knownTokenFiles: listProviderTokenSnapshots(provider as CLIProxyProvider),
       });
     }
 
@@ -837,6 +916,59 @@ router.get('/:provider/status', async (req: Request, res: Response): Promise<voi
       { headers: buildManagementHeaders(target) }
     );
     const data = (await response.json()) as { status?: string; error?: string };
+
+    if (data.status === 'ok') {
+      const localProvider = provider as CLIProxyProvider;
+      const pendingAuth = getManualAuthState(state);
+
+      if (!pendingAuth) {
+        res.status(409).json({
+          status: 'error',
+          error:
+            'Authentication completed upstream, but CCS could not match it to the active add-account session. Retry the flow from the dashboard.',
+        });
+        return;
+      }
+
+      const tokenSnapshot = findNewTokenSnapshotForPendingAuth(localProvider, pendingAuth);
+      if (!tokenSnapshot) {
+        res.status(409).json({
+          status: 'error',
+          error:
+            'Authentication completed upstream, but no new local token was saved for this account. Update CCS/CLIProxy and retry.',
+        });
+        return;
+      }
+
+      const account = registerAccountFromToken(
+        localProvider,
+        getProviderTokenDir(localProvider),
+        pendingAuth.nickname,
+        false,
+        extractAccountIdFromTokenFile(tokenSnapshot.file, tokenSnapshot.email)
+      );
+
+      if (!account) {
+        res.status(409).json({
+          status: 'error',
+          error: getManualCallbackRegistrationError(localProvider),
+        });
+        return;
+      }
+
+      pendingManualAuthState.delete(state);
+      res.json({
+        status: 'ok',
+        account: {
+          id: account.id,
+          email: account.email,
+          nickname: account.nickname,
+          provider: account.provider,
+          isDefault: account.isDefault,
+        },
+      });
+      return;
+    }
 
     res.json(data);
   } catch {

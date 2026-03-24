@@ -133,6 +133,7 @@ export function useCliproxyAuthFlow() {
         const data = (await response.json()) as {
           status?: string;
           error?: string;
+          account?: unknown;
           url?: string;
           auth_url?: string;
           verification_url?: string;
@@ -141,8 +142,22 @@ export function useCliproxyAuthFlow() {
         pollFailureCountRef.current = 0;
 
         if (data.status === 'ok') {
+          const hasAccount = typeof data.account === 'object' && data.account !== null;
+          if (!hasAccount) {
+            stopPolling();
+            const errorMsg = 'Authenticated account could not be registered';
+            toast.error(errorMsg);
+            setState((prev) => ({
+              ...prev,
+              isAuthenticating: false,
+              error: errorMsg,
+            }));
+            return;
+          }
+
           stopPolling();
           queryClient.invalidateQueries({ queryKey: ['cliproxy-auth'] });
+          queryClient.invalidateQueries({ queryKey: ['cliproxy-accounts'] });
           queryClient.invalidateQueries({ queryKey: ['account-quota'] });
           toast.success(`${provider} authentication successful`);
           openedAuthUrlRef.current = false;
@@ -270,8 +285,10 @@ export function useCliproxyAuthFlow() {
                 return;
               }
               const success = data.success === true;
-              if (response.ok && success) {
+              const hasAccount = typeof data.account === 'object' && data.account !== null;
+              if (response.ok && success && hasAccount) {
                 queryClient.invalidateQueries({ queryKey: ['cliproxy-auth'] });
+                queryClient.invalidateQueries({ queryKey: ['cliproxy-accounts'] });
                 queryClient.invalidateQueries({ queryKey: ['account-quota'] });
                 // Note: No toast here - DeviceCodeDialog's useDeviceCode hook handles success toast
                 // via deviceCodeCompleted WebSocket event to avoid duplicate toasts
@@ -279,7 +296,11 @@ export function useCliproxyAuthFlow() {
                 setState(INITIAL_STATE);
               } else {
                 const errorMsg =
-                  typeof data.error === 'string' ? data.error : 'Authentication failed';
+                  typeof data.error === 'string'
+                    ? data.error
+                    : success
+                      ? 'Authenticated account could not be registered'
+                      : 'Authentication failed';
                 toast.error(errorMsg);
                 setState((prev) => ({
                   ...prev,
@@ -416,6 +437,7 @@ export function useCliproxyAuthFlow() {
         if (response.ok && success && hasAccount) {
           stopPolling();
           queryClient.invalidateQueries({ queryKey: ['cliproxy-auth'] });
+          queryClient.invalidateQueries({ queryKey: ['cliproxy-accounts'] });
           queryClient.invalidateQueries({ queryKey: ['account-quota'] });
           toast.success(`${currentProvider} authentication successful`);
           setState(INITIAL_STATE);
