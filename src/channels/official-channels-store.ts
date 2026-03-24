@@ -2,8 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getCcsDir } from '../utils/config-manager';
 import { getDefaultClaudeConfigDir } from '../utils/claude-config-path';
-
-export const DISCORD_BOT_TOKEN_ENV_KEY = 'DISCORD_BOT_TOKEN';
+import type { OfficialChannelId } from '../config/unified-config-types';
+import {
+  getOfficialChannelEnvDir,
+  getOfficialChannelEnvKey,
+  getOfficialChannelTokenIds,
+  isOfficialChannelTokenRequired,
+} from './official-channels-runtime';
 
 export interface DiscordChannelsSyncResult {
   synced: boolean;
@@ -12,8 +17,11 @@ export interface DiscordChannelsSyncResult {
   error?: string;
 }
 
-export function getDiscordChannelsEnvPath(configDir = getDefaultClaudeConfigDir()): string {
-  return path.join(configDir, 'channels', 'discord', '.env');
+export function getOfficialChannelEnvPath(
+  channelId: OfficialChannelId,
+  configDir = getDefaultClaudeConfigDir()
+): string {
+  return path.join(configDir, 'channels', getOfficialChannelEnvDir(channelId), '.env');
 }
 
 function readFileIfExists(filePath: string): string | null {
@@ -85,14 +93,19 @@ function writeSecureFile(filePath: string, content: string): void {
   fs.chmodSync(filePath, 0o600);
 }
 
-function clearDiscordBotTokenAtPath(filePath: string): boolean {
+function clearOfficialChannelTokenAtPath(channelId: OfficialChannelId, filePath: string): boolean {
+  const envKey = getOfficialChannelEnvKey(channelId);
+  if (!envKey) {
+    return false;
+  }
+
   const currentContent = readFileIfExists(filePath);
 
   if (currentContent === null) {
     return false;
   }
 
-  const nextContent = removeEnvValue(currentContent, DISCORD_BOT_TOKEN_ENV_KEY);
+  const nextContent = removeEnvValue(currentContent, envKey);
   if (nextContent.length === 0) {
     fs.rmSync(filePath, { force: true });
     return true;
@@ -132,9 +145,17 @@ export function normalizeDiscordBotToken(value: string): string | null {
   return normalized;
 }
 
-export function readDiscordBotTokenFromEnvContent(content: string): string | null {
+export function readOfficialChannelTokenFromEnvContent(
+  channelId: OfficialChannelId,
+  content: string
+): string | null {
+  const envKey = getOfficialChannelEnvKey(channelId);
+  if (!envKey) {
+    return null;
+  }
+
   for (const line of content.split(/\r?\n/)) {
-    const match = line.match(/^\s*DISCORD_BOT_TOKEN\s*=\s*(.*)\s*$/);
+    const match = line.match(new RegExp(`^\\s*${envKey}\\s*=\\s*(.*)\\s*$`));
     if (!match) {
       continue;
     }
@@ -145,52 +166,75 @@ export function readDiscordBotTokenFromEnvContent(content: string): string | nul
   return null;
 }
 
-export function readConfiguredDiscordBotToken(): string | null {
-  const content = readFileIfExists(getDiscordChannelsEnvPath());
-  return content ? readDiscordBotTokenFromEnvContent(content) : null;
+export function readConfiguredOfficialChannelToken(channelId: OfficialChannelId): string | null {
+  const content = readFileIfExists(getOfficialChannelEnvPath(channelId));
+  return content ? readOfficialChannelTokenFromEnvContent(channelId, content) : null;
 }
 
-export function hasConfiguredDiscordBotToken(): boolean {
-  return readConfiguredDiscordBotToken() !== null;
+export function hasConfiguredOfficialChannelToken(channelId: OfficialChannelId): boolean {
+  return readConfiguredOfficialChannelToken(channelId) !== null;
 }
 
-export function setConfiguredDiscordBotToken(token: string): string {
-  const normalized = normalizeDiscordBotToken(token);
-  if (!normalized) {
-    throw new Error('Discord bot token cannot be empty or multiline.');
+export function setConfiguredOfficialChannelToken(
+  channelId: OfficialChannelId,
+  token: string
+): string {
+  const envKey = getOfficialChannelEnvKey(channelId);
+  if (!envKey) {
+    throw new Error(`${channelId} does not use a bot token.`);
   }
 
-  const envPath = getDiscordChannelsEnvPath();
+  const normalized = normalizeDiscordBotToken(token);
+  if (!normalized) {
+    throw new Error(`${envKey} cannot be empty or multiline.`);
+  }
+
+  const envPath = getOfficialChannelEnvPath(channelId);
   const currentContent = readFileIfExists(envPath) ?? '';
-  writeSecureFile(envPath, upsertEnvValue(currentContent, DISCORD_BOT_TOKEN_ENV_KEY, normalized));
+  writeSecureFile(envPath, upsertEnvValue(currentContent, envKey, normalized));
   return envPath;
 }
 
-export function clearConfiguredDiscordBotToken(): string {
-  const envPath = getDiscordChannelsEnvPath();
-  clearDiscordBotTokenAtPath(envPath);
+export function clearConfiguredOfficialChannelToken(channelId: OfficialChannelId): string {
+  const envPath = getOfficialChannelEnvPath(channelId);
+  clearOfficialChannelTokenAtPath(channelId, envPath);
   return envPath;
 }
 
-export function clearConfiguredDiscordBotTokenEverywhere(): string[] {
+export function clearConfiguredOfficialChannelTokensEverywhere(
+  channelId?: OfficialChannelId
+): string[] {
   const clearedPaths: string[] = [];
+  const channels = channelId ? [channelId] : getOfficialChannelTokenIds();
 
   for (const configDir of listManagedClaudeConfigDirs()) {
-    const envPath = getDiscordChannelsEnvPath(configDir);
-    if (clearDiscordBotTokenAtPath(envPath)) {
-      clearedPaths.push(envPath);
+    for (const tokenChannelId of channels) {
+      const envPath = getOfficialChannelEnvPath(tokenChannelId, configDir);
+      if (clearOfficialChannelTokenAtPath(tokenChannelId, envPath)) {
+        clearedPaths.push(envPath);
+      }
     }
   }
 
   return clearedPaths;
 }
 
-export function syncDiscordChannelsEnvToConfigDir(
+export function syncOfficialChannelEnvToConfigDir(
+  channelId: OfficialChannelId,
   targetConfigDir: string
 ): DiscordChannelsSyncResult {
-  const sourcePath = getDiscordChannelsEnvPath();
-  const targetPath = getDiscordChannelsEnvPath(targetConfigDir);
-  const token = readConfiguredDiscordBotToken();
+  const envKey = getOfficialChannelEnvKey(channelId);
+  if (!envKey) {
+    return {
+      synced: false,
+      targetPath: getOfficialChannelEnvPath(channelId, targetConfigDir),
+      reason: 'missing_token',
+    };
+  }
+
+  const sourcePath = getOfficialChannelEnvPath(channelId);
+  const targetPath = getOfficialChannelEnvPath(channelId, targetConfigDir);
+  const token = readConfiguredOfficialChannelToken(channelId);
 
   if (!fs.existsSync(sourcePath)) {
     return { synced: false, targetPath, reason: 'missing_env' };
@@ -206,7 +250,7 @@ export function syncDiscordChannelsEnvToConfigDir(
 
   try {
     const targetContent = readFileIfExists(targetPath) ?? '';
-    writeSecureFile(targetPath, upsertEnvValue(targetContent, DISCORD_BOT_TOKEN_ENV_KEY, token));
+    writeSecureFile(targetPath, upsertEnvValue(targetContent, envKey, token));
     return { synced: true, targetPath };
   } catch (error) {
     return {
@@ -216,4 +260,10 @@ export function syncDiscordChannelsEnvToConfigDir(
       error: (error as Error).message,
     };
   }
+}
+
+export function getOfficialChannelReadiness(channelId: OfficialChannelId): boolean {
+  return isOfficialChannelTokenRequired(channelId)
+    ? hasConfiguredOfficialChannelToken(channelId)
+    : true;
 }

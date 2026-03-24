@@ -21,7 +21,7 @@ import {
   DEFAULT_CLIPROXY_SAFETY_CONFIG,
   DEFAULT_QUOTA_MANAGEMENT_CONFIG,
   DEFAULT_THINKING_CONFIG,
-  DEFAULT_DISCORD_CHANNELS_CONFIG,
+  DEFAULT_OFFICIAL_CHANNELS_CONFIG,
   DEFAULT_DASHBOARD_AUTH_CONFIG,
   DEFAULT_IMAGE_ANALYSIS_CONFIG,
 } from './unified-config-types';
@@ -30,7 +30,8 @@ import type {
   CLIProxySafetyConfig,
   GlobalEnvConfig,
   ThinkingConfig,
-  DiscordChannelsConfig,
+  OfficialChannelsConfig,
+  OfficialChannelId,
   DashboardAuthConfig,
   ImageAnalysisConfig,
   CursorConfig,
@@ -38,6 +39,11 @@ import type {
 } from './unified-config-types';
 import { validateCompositeTiers } from '../cliproxy/composite-validator';
 import { isUnifiedConfigEnabled } from './feature-flags';
+import {
+  isOfficialChannelId,
+  normalizeOfficialChannelIds,
+  resolveLegacyDiscordSelection,
+} from '../channels/official-channels-runtime';
 
 const CONFIG_YAML = 'config.yaml';
 const CONFIG_JSON = 'config.json';
@@ -290,6 +296,30 @@ function normalizeContinuityConfig(partial: Partial<UnifiedConfig>): ContinuityC
   };
 }
 
+interface LegacyDiscordChannelsConfig {
+  enabled?: boolean;
+  unattended?: boolean;
+}
+
+function normalizeOfficialChannelsConfig(
+  partial: Partial<UnifiedConfig> & { discord_channels?: LegacyDiscordChannelsConfig }
+): OfficialChannelsConfig {
+  const rawSelected = Array.isArray(partial.channels?.selected)
+    ? partial.channels.selected.filter((value): value is OfficialChannelId => isOfficialChannelId(value))
+    : [];
+
+  return {
+    selected:
+      rawSelected.length > 0
+        ? normalizeOfficialChannelIds(rawSelected)
+        : resolveLegacyDiscordSelection(partial.discord_channels?.enabled),
+    unattended:
+      partial.channels?.unattended ??
+      partial.discord_channels?.unattended ??
+      DEFAULT_OFFICIAL_CHANNELS_CONFIG.unattended,
+  };
+}
+
 /**
  * Merge partial config with defaults.
  * Preserves existing data while filling in missing sections.
@@ -501,11 +531,9 @@ function mergeWithDefaults(partial: Partial<UnifiedConfig>): UnifiedConfig {
       provider_overrides: partial.thinking?.provider_overrides,
       show_warnings: partial.thinking?.show_warnings ?? DEFAULT_THINKING_CONFIG.show_warnings,
     },
-    discord_channels: {
-      enabled: partial.discord_channels?.enabled ?? DEFAULT_DISCORD_CHANNELS_CONFIG.enabled,
-      unattended:
-        partial.discord_channels?.unattended ?? DEFAULT_DISCORD_CHANNELS_CONFIG.unattended,
-    },
+    channels: normalizeOfficialChannelsConfig(
+      partial as Partial<UnifiedConfig> & { discord_channels?: LegacyDiscordChannelsConfig }
+    ),
     // Dashboard auth config - disabled by default
     dashboard_auth: {
       enabled: partial.dashboard_auth?.enabled ?? DEFAULT_DASHBOARD_AUTH_CONFIG.enabled,
@@ -770,20 +798,22 @@ function generateYamlWithComments(config: UnifiedConfig): string {
     lines.push('');
   }
 
-  // Discord Channels section
-  if (config.discord_channels) {
+  // Official Channels section
+  if (config.channels) {
     lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# Discord Channels: Runtime auto-enable for Anthropic official Discord plugin');
+    lines.push('# Official Channels: Runtime auto-enable for Anthropic official channel plugins');
+    lines.push('# Supported channels: telegram, discord, imessage');
     lines.push('# Runtime-only: CCS injects --channels at launch for compatible Claude sessions.');
-    lines.push('# Token storage lives in ~/.claude/channels/discord/.env, not in config.yaml.');
-    lines.push('# unattended adds --dangerously-skip-permissions only when auto-enable is active.');
+    lines.push('# Bot tokens live in Claude channel env files, not in config.yaml.');
+    lines.push('# Use selected: [telegram, discord, imessage] to choose channels.');
+    lines.push('# unattended adds --dangerously-skip-permissions only when channel auto-enable is active.');
     lines.push('# Compatible sessions: native Claude default/account profiles only.');
     lines.push('# Configure via: ccs config channels or the Settings > Channels dashboard tab.');
     lines.push('# ----------------------------------------------------------------------------');
     lines.push(
       yaml
         .dump(
-          { discord_channels: config.discord_channels },
+          { channels: config.channels },
           { indent: 2, lineWidth: -1, quotingType: '"' }
         )
         .trim()
@@ -1167,15 +1197,18 @@ export function getThinkingConfig(): ThinkingConfig {
 }
 
 /**
- * Get Discord Channels configuration.
+ * Get Official Channels configuration.
  * Returns defaults if not configured.
  */
-export function getDiscordChannelsConfig(): DiscordChannelsConfig {
+export function getOfficialChannelsConfig(): OfficialChannelsConfig {
   const config = loadOrCreateUnifiedConfig();
 
   return {
-    enabled: config.discord_channels?.enabled ?? DEFAULT_DISCORD_CHANNELS_CONFIG.enabled,
-    unattended: config.discord_channels?.unattended ?? DEFAULT_DISCORD_CHANNELS_CONFIG.unattended,
+    selected:
+      config.channels?.selected && config.channels.selected.length > 0
+        ? normalizeOfficialChannelIds(config.channels.selected)
+        : DEFAULT_OFFICIAL_CHANNELS_CONFIG.selected,
+    unattended: config.channels?.unattended ?? DEFAULT_OFFICIAL_CHANNELS_CONFIG.unattended,
   };
 }
 

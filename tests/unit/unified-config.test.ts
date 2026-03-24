@@ -106,10 +106,10 @@ describe('unified-config-types', () => {
       expect(config.preferences.auto_update).toBe(true);
     });
 
-    it('should default Discord Channels to disabled and attended mode', () => {
+    it('should default Official Channels to disabled and attended mode', () => {
       const config = createEmptyUnifiedConfig();
-      expect(config.discord_channels?.enabled).toBe(false);
-      expect(config.discord_channels?.unattended).toBe(false);
+      expect(config.channels?.selected).toEqual([]);
+      expect(config.channels?.unattended).toBe(false);
     });
 
     it('should have CLIProxy providers list', () => {

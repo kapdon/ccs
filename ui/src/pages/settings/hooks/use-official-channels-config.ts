@@ -1,14 +1,14 @@
 import { useCallback, useState } from 'react';
-import type { DiscordChannelsConfig, DiscordChannelsStatus } from '../types';
+import type { OfficialChannelId, OfficialChannelsConfig, OfficialChannelsStatus } from '../types';
 
-const DEFAULT_CONFIG: DiscordChannelsConfig = {
-  enabled: false,
+const DEFAULT_CONFIG: OfficialChannelsConfig = {
+  selected: [],
   unattended: false,
 };
 
-export function useDiscordChannelsConfig() {
-  const [config, setConfig] = useState<DiscordChannelsConfig>(DEFAULT_CONFIG);
-  const [status, setStatus] = useState<DiscordChannelsStatus | null>(null);
+export function useOfficialChannelsConfig() {
+  const [config, setConfig] = useState<OfficialChannelsConfig>(DEFAULT_CONFIG);
+  const [status, setStatus] = useState<OfficialChannelsStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,12 +25,12 @@ export function useDiscordChannelsConfig() {
       setError(null);
       const res = await fetch('/api/channels');
       if (!res.ok) {
-        throw new Error('Failed to load Discord Channels settings');
+        throw new Error('Failed to load Official Channels settings');
       }
 
       const data = (await res.json()) as {
-        config?: DiscordChannelsConfig;
-        status?: DiscordChannelsStatus;
+        config?: OfficialChannelsConfig;
+        status?: OfficialChannelsStatus;
       };
 
       setConfig(data.config ?? DEFAULT_CONFIG);
@@ -43,7 +43,7 @@ export function useDiscordChannelsConfig() {
   }, []);
 
   const updateConfig = useCallback(
-    async (updates: Partial<DiscordChannelsConfig>, successMessage = 'Settings saved') => {
+    async (updates: Partial<OfficialChannelsConfig>, successMessage = 'Settings saved') => {
       try {
         setSaving(true);
         setError(null);
@@ -56,10 +56,10 @@ export function useDiscordChannelsConfig() {
 
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
-          throw new Error(data.error || 'Failed to save Discord Channels settings');
+          throw new Error(data.error || 'Failed to save Official Channels settings');
         }
 
-        const data = (await res.json()) as { config?: DiscordChannelsConfig };
+        const data = (await res.json()) as { config?: OfficialChannelsConfig };
         setConfig(data.config ?? { ...config, ...updates });
         flashSuccess(successMessage);
       } catch (err) {
@@ -72,12 +72,12 @@ export function useDiscordChannelsConfig() {
   );
 
   const saveToken = useCallback(
-    async (token: string) => {
+    async (channelId: OfficialChannelId, token: string) => {
       try {
         setSaving(true);
         setError(null);
 
-        const res = await fetch('/api/channels/discord/token', {
+        const res = await fetch(`/api/channels/${channelId}/token`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
@@ -85,11 +85,11 @@ export function useDiscordChannelsConfig() {
 
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
-          throw new Error(data.error || 'Failed to save Discord bot token');
+          throw new Error(data.error || `Failed to save ${channelId} token`);
         }
 
         await fetchConfig();
-        flashSuccess('Discord bot token saved');
+        flashSuccess(`${channelId} token saved`);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
@@ -99,28 +99,31 @@ export function useDiscordChannelsConfig() {
     [fetchConfig, flashSuccess]
   );
 
-  const clearToken = useCallback(async () => {
-    try {
-      setSaving(true);
-      setError(null);
+  const clearToken = useCallback(
+    async (channelId: OfficialChannelId) => {
+      try {
+        setSaving(true);
+        setError(null);
 
-      const res = await fetch('/api/channels/discord/token', {
-        method: 'DELETE',
-      });
+        const res = await fetch(`/api/channels/${channelId}/token`, {
+          method: 'DELETE',
+        });
 
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to clear Discord bot token');
+        if (!res.ok) {
+          const data = (await res.json()) as { error?: string };
+          throw new Error(data.error || `Failed to clear ${channelId} token`);
+        }
+
+        await fetchConfig();
+        flashSuccess(`${channelId} token cleared`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setSaving(false);
       }
-
-      await fetchConfig();
-      flashSuccess('Discord bot token cleared');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setSaving(false);
-    }
-  }, [fetchConfig, flashSuccess]);
+    },
+    [fetchConfig, flashSuccess]
+  );
 
   return {
     config,

@@ -25,8 +25,9 @@ import { CLIPROXY_PROVIDER_IDS } from '../cliproxy/provider-capabilities';
  * Version 9 = Real WebSearch backends (DuckDuckGo/Brave) with legacy CLI fallback
  * Version 10 = Exa + Tavily WebSearch backends
  * Version 11 = Discord Channels runtime auto-enable preferences
+ * Version 12 = Official Channels multi-provider support (Telegram, Discord, iMessage)
  */
-export const UNIFIED_CONFIG_VERSION = 11;
+export const UNIFIED_CONFIG_VERSION = 12;
 
 /**
  * Supported CLIProxy providers.
@@ -696,22 +697,27 @@ export const DEFAULT_THINKING_CONFIG: ThinkingConfig = {
 };
 
 /**
- * Discord Channels configuration.
- * Controls runtime-only injection of Anthropic's official Discord channel plugin.
+ * Supported Anthropic official channel IDs.
  */
-export interface DiscordChannelsConfig {
-  /** Enable auto-adding the official Discord channel for compatible sessions */
-  enabled: boolean;
+export type OfficialChannelId = 'telegram' | 'discord' | 'imessage';
+
+/**
+ * Official Channels configuration.
+ * Controls runtime-only injection of Anthropic's official channel plugins.
+ */
+export interface OfficialChannelsConfig {
+  /** Selected official channels to auto-enable for compatible sessions */
+  selected: OfficialChannelId[];
   /** Also add --dangerously-skip-permissions when auto-enable is active */
   unattended: boolean;
 }
 
 /**
- * Default Discord Channels configuration.
+ * Default Official Channels configuration.
  * Disabled by default because the feature requires explicit user setup.
  */
-export const DEFAULT_DISCORD_CHANNELS_CONFIG: DiscordChannelsConfig = {
-  enabled: false,
+export const DEFAULT_OFFICIAL_CHANNELS_CONFIG: OfficialChannelsConfig = {
+  selected: [],
   unattended: false,
 };
 
@@ -812,7 +818,7 @@ export interface UnifiedConfig {
   /** Thinking/reasoning budget configuration (v8+) */
   thinking?: ThinkingConfig;
   /** Discord Channels runtime auto-enable preferences (v11+) */
-  discord_channels?: DiscordChannelsConfig;
+  channels?: OfficialChannelsConfig;
   /** Dashboard authentication configuration (optional) */
   dashboard_auth?: DashboardAuthConfig;
   /** Image analysis configuration (vision via CLIProxy) */
@@ -939,7 +945,7 @@ export function createEmptyUnifiedConfig(): UnifiedConfig {
     cliproxy_server: { ...DEFAULT_CLIPROXY_SERVER_CONFIG },
     quota_management: { ...DEFAULT_QUOTA_MANAGEMENT_CONFIG },
     thinking: { ...DEFAULT_THINKING_CONFIG },
-    discord_channels: { ...DEFAULT_DISCORD_CHANNELS_CONFIG },
+    channels: { ...DEFAULT_OFFICIAL_CHANNELS_CONFIG },
     dashboard_auth: { ...DEFAULT_DASHBOARD_AUTH_CONFIG },
     image_analysis: { ...DEFAULT_IMAGE_ANALYSIS_CONFIG },
   };

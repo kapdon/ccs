@@ -311,9 +311,9 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     ['ccs config', 'Open web dashboard (includes Claude IDE Extension setup page)'],
     ['ccs config auth setup', 'Configure dashboard login'],
     ['ccs config auth show', 'Show dashboard auth status'],
-    ['ccs config channels', 'Show Discord Channels status'],
-    ['ccs config channels --enable', 'Auto-enable Discord Channels on native Claude sessions'],
-    ['ccs config channels --set-token <token>', 'Save DISCORD_BOT_TOKEN for Discord Channels'],
+    ['ccs config channels', 'Show Official Channels status'],
+    ['ccs config channels --set telegram,discord', 'Auto-enable Telegram + Discord'],
+    ['ccs config channels --set-token telegram=<token>', 'Save TELEGRAM_BOT_TOKEN'],
     ['ccs config image-analysis', 'Show image analysis settings'],
     ['ccs config image-analysis --enable', 'Enable image analysis'],
     ['ccs config thinking', 'Show thinking/reasoning settings'],
@@ -469,15 +469,18 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
     ['', 'providers (agy, gemini, codex, kiro, ghcp).'],
   ]);
 
-  printSubSection('Discord Channels (official Claude plugin)', [
+  printSubSection('Official Channels (official Claude plugins)', [
     ['ccs config channels', 'Show current status'],
-    ['ccs config channels --enable', 'Auto-add Discord Channels on native Claude sessions'],
+    ['ccs config channels --set telegram,discord', 'Auto-add selected channels on native Claude sessions'],
+    ['ccs config channels --set all', 'Enable Telegram, Discord, and iMessage'],
     ['ccs config channels --unattended', 'Also add --dangerously-skip-permissions'],
-    ['ccs config channels --set-token <token>', 'Save DISCORD_BOT_TOKEN'],
-    ['ccs config channels --clear-token', 'Remove saved token'],
+    ['ccs config channels --set-token telegram=<token>', 'Save TELEGRAM_BOT_TOKEN'],
+    ['ccs config channels --set-token discord=<token>', 'Save DISCORD_BOT_TOKEN'],
+    ['ccs config channels --clear-token [channel]', 'Remove one or all saved channel tokens'],
     ['', ''],
     ['Note:', 'Runtime-only. Applies to native Claude default/account sessions.'],
-    ['', 'CCS stores the token in ~/.claude/channels/discord/.env.'],
+    ['', 'Telegram/Discord tokens live in ~/.claude/channels/<channel>/.env.'],
+    ['', 'iMessage is macOS-only and requires local OS permissions instead of a bot token.'],
   ]);
 
   // CCS Environment Variables

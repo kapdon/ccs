@@ -1,25 +1,58 @@
 import { Router, type Request, type Response } from 'express';
-import { getDiscordChannelsConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
+import { getOfficialChannelsConfig, mutateUnifiedConfig } from '../../config/unified-config-loader';
 import {
-  clearConfiguredDiscordBotTokenEverywhere,
-  getDiscordChannelsEnvPath,
-  hasConfiguredDiscordBotToken,
-  setConfiguredDiscordBotToken,
-} from '../../channels/discord-channels-store';
+  clearConfiguredOfficialChannelTokensEverywhere,
+  getOfficialChannelEnvPath,
+  getOfficialChannelReadiness,
+  hasConfiguredOfficialChannelToken,
+  setConfiguredOfficialChannelToken,
+} from '../../channels/official-channels-store';
 import {
-  DISCORD_CHANNEL_PLUGIN_SPEC,
+  expandOfficialChannelSelection,
+  getOfficialChannelDisplayName,
+  getOfficialChannelEnvKey,
+  getOfficialChannelPluginSpec,
+  getOfficialChannelSummary,
+  getOfficialChannelUnavailableReason,
+  getOfficialChannelsSupportedProfiles,
+  getOfficialChannelManualSetupCommands,
+  getOfficialChannelTokenIds,
   isBunAvailable,
-} from '../../channels/discord-channels-runtime';
+  isOfficialChannelId,
+} from '../../channels/official-channels-runtime';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
 
 const router = Router();
+
+function buildChannelsStatus() {
+  return {
+    bunInstalled: isBunAvailable(),
+    supportedProfiles: getOfficialChannelsSupportedProfiles(),
+    channels: expandOfficialChannelSelection('all').map((channelId) => ({
+      id: channelId,
+      displayName: getOfficialChannelDisplayName(channelId),
+      pluginSpec: getOfficialChannelPluginSpec(channelId),
+      summary: getOfficialChannelSummary(channelId),
+      requiresToken: getOfficialChannelTokenIds().includes(channelId),
+      envKey: getOfficialChannelEnvKey(channelId),
+      tokenConfigured: getOfficialChannelTokenIds().includes(channelId)
+        ? hasConfiguredOfficialChannelToken(channelId)
+        : getOfficialChannelReadiness(channelId),
+      tokenPath: getOfficialChannelTokenIds().includes(channelId)
+        ? getOfficialChannelEnvPath(channelId)
+        : undefined,
+      unavailableReason: getOfficialChannelUnavailableReason(channelId),
+      manualSetupCommands: getOfficialChannelManualSetupCommands(channelId),
+    })),
+  };
+}
 
 router.use((req: Request, res: Response, next) => {
   if (
     requireLocalAccessWhenAuthDisabled(
       req,
       res,
-      'Discord Channels settings require localhost access when dashboard auth is disabled.'
+      'Official Channels settings require localhost access when dashboard auth is disabled.'
     )
   ) {
     next();
@@ -28,28 +61,19 @@ router.use((req: Request, res: Response, next) => {
 
 router.get('/', (_req: Request, res: Response): void => {
   res.json({
-    config: getDiscordChannelsConfig(),
-    status: {
-      bunInstalled: isBunAvailable(),
-      tokenConfigured: hasConfiguredDiscordBotToken(),
-      tokenPath: getDiscordChannelsEnvPath(),
-      pluginSpec: DISCORD_CHANNEL_PLUGIN_SPEC,
-      supportedProfiles: ['default', 'account'],
-      manualSetupCommands: [
-        '/plugin install discord@claude-plugins-official',
-        '/discord:configure <DISCORD_BOT_TOKEN>',
-        '/discord:access pair <code>',
-        '/discord:access policy allowlist',
-      ],
-    },
+    config: getOfficialChannelsConfig(),
+    status: buildChannelsStatus(),
   });
 });
 
 router.put('/', (req: Request, res: Response): void => {
-  const { enabled, unattended } = req.body as { enabled?: unknown; unattended?: unknown };
+  const { selected, unattended } = req.body as { selected?: unknown; unattended?: unknown };
 
-  if (enabled !== undefined && typeof enabled !== 'boolean') {
-    res.status(400).json({ error: 'enabled must be a boolean' });
+  if (
+    selected !== undefined &&
+    (!Array.isArray(selected) || selected.some((value) => typeof value !== 'string' || !isOfficialChannelId(value)))
+  ) {
+    res.status(400).json({ error: 'selected must be an array of official channel IDs' });
     return;
   }
   if (unattended !== undefined && typeof unattended !== 'boolean') {
@@ -59,28 +83,33 @@ router.put('/', (req: Request, res: Response): void => {
 
   try {
     const updated = mutateUnifiedConfig((config) => {
-      config.discord_channels = {
-        enabled: enabled ?? config.discord_channels?.enabled ?? false,
-        unattended: unattended ?? config.discord_channels?.unattended ?? false,
+      config.channels = {
+        selected: selected ? [...new Set(selected)] : config.channels?.selected ?? [],
+        unattended: unattended ?? config.channels?.unattended ?? false,
       };
     });
 
-    res.json({ success: true, config: updated.discord_channels });
+    res.json({ success: true, config: updated.channels });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
 });
 
-router.put('/discord/token', (req: Request, res: Response): void => {
+router.put('/:channelId/token', (req: Request, res: Response): void => {
+  const { channelId } = req.params;
   const { token } = req.body as { token?: unknown };
 
+  if (!isOfficialChannelId(channelId) || !getOfficialChannelTokenIds().includes(channelId)) {
+    res.status(400).json({ error: 'channelId must be a token-based official channel' });
+    return;
+  }
   if (typeof token !== 'string') {
     res.status(400).json({ error: 'token must be a string' });
     return;
   }
 
   try {
-    const tokenPath = setConfiguredDiscordBotToken(token);
+    const tokenPath = setConfiguredOfficialChannelToken(channelId, token);
     res.json({ success: true, tokenConfigured: true, tokenPath });
   } catch (error) {
     const message = (error as Error).message;
@@ -89,13 +118,20 @@ router.put('/discord/token', (req: Request, res: Response): void => {
   }
 });
 
-router.delete('/discord/token', (_req: Request, res: Response): void => {
+router.delete('/:channelId/token', (req: Request, res: Response): void => {
+  const { channelId } = req.params;
+
+  if (!isOfficialChannelId(channelId) || !getOfficialChannelTokenIds().includes(channelId)) {
+    res.status(400).json({ error: 'channelId must be a token-based official channel' });
+    return;
+  }
+
   try {
-    const clearedPaths = clearConfiguredDiscordBotTokenEverywhere();
+    const clearedPaths = clearConfiguredOfficialChannelTokensEverywhere(channelId);
     res.json({
       success: true,
       tokenConfigured: false,
-      tokenPath: getDiscordChannelsEnvPath(),
+      tokenPath: getOfficialChannelEnvPath(channelId),
       clearedPaths,
     });
   } catch (error) {

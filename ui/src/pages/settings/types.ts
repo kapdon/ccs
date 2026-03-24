@@ -60,20 +60,32 @@ export interface GlobalEnvConfig {
   env: Record<string, string>;
 }
 
-// === Discord Channels Types ===
+// === Official Channels Types ===
 
-export interface DiscordChannelsConfig {
-  enabled: boolean;
+export type OfficialChannelId = 'telegram' | 'discord' | 'imessage';
+
+export interface OfficialChannelsConfig {
+  selected: OfficialChannelId[];
   unattended: boolean;
 }
 
-export interface DiscordChannelsStatus {
-  bunInstalled: boolean;
-  tokenConfigured: boolean;
-  tokenPath: string;
+export interface OfficialChannelStatus {
+  id: OfficialChannelId;
+  displayName: string;
   pluginSpec: string;
-  supportedProfiles: string[];
+  summary: string;
+  requiresToken: boolean;
+  envKey?: string;
+  tokenConfigured: boolean;
+  tokenPath?: string;
+  unavailableReason?: string;
   manualSetupCommands: string[];
+}
+
+export interface OfficialChannelsStatus {
+  bunInstalled: boolean;
+  supportedProfiles: string[];
+  channels: OfficialChannelStatus[];
 }
 
 // === Tab Types ===

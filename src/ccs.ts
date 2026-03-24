@@ -29,20 +29,24 @@ import {
   getWebSearchHookEnv,
   ensureProfileHooks,
 } from './utils/websearch-manager';
-import { getGlobalEnvConfig, getDiscordChannelsConfig } from './config/unified-config-loader';
+import { getGlobalEnvConfig, getOfficialChannelsConfig } from './config/unified-config-loader';
 import { ensureProfileHooks as ensureImageAnalyzerHooks } from './utils/hooks/image-analyzer-profile-hook-injector';
 import { getImageAnalysisHookEnv } from './utils/hooks';
 import { fail, info, warn } from './utils/ui';
 import { isCopilotSubcommandToken } from './copilot/constants';
 import {
+  buildOfficialChannelsArgs,
+  getOfficialChannelDisplayName,
+  getOfficialChannelTokenIds,
   isBunAvailable,
-  resolveDiscordChannelsSyncConfigDir,
-  resolveDiscordChannelsLaunchPlan,
-} from './channels/discord-channels-runtime';
+  officialChannelRequiresMacOS,
+  resolveOfficialChannelsLaunchPlan,
+  resolveOfficialChannelsSyncConfigDir,
+} from './channels/official-channels-runtime';
 import {
-  hasConfiguredDiscordBotToken,
-  syncDiscordChannelsEnvToConfigDir,
-} from './channels/discord-channels-store';
+  getOfficialChannelReadiness,
+  syncOfficialChannelEnvToConfigDir,
+} from './channels/official-channels-store';
 
 // Import centralized error handling
 import { handleError, runCleanup } from './errors';
@@ -144,39 +148,56 @@ function resolveNativeClaudeLaunchArgs(
   profileType: 'default' | 'account',
   targetConfigDir?: string
 ): string[] {
-  const config = getDiscordChannelsConfig();
-  const plan = resolveDiscordChannelsLaunchPlan({
+  const config = getOfficialChannelsConfig();
+  const channelReadiness = {
+    telegram: getOfficialChannelReadiness('telegram'),
+    discord: getOfficialChannelReadiness('discord'),
+    imessage: !officialChannelRequiresMacOS('imessage') || process.platform === 'darwin',
+  };
+  const plan = resolveOfficialChannelsLaunchPlan({
     args,
     config,
     target: 'claude',
     profileType,
     bunAvailable: isBunAvailable(),
-    tokenConfigured: hasConfiguredDiscordBotToken(),
+    channelReadiness,
   });
 
-  if (plan.skipMessage) {
-    console.error(warn(plan.skipMessage));
+  for (const message of plan.skippedMessages) {
+    console.error(warn(message));
   }
 
   if (!plan.applied) {
     return args;
   }
 
-  const activeConfigDir = resolveDiscordChannelsSyncConfigDir(targetConfigDir);
+  const activeConfigDir = resolveOfficialChannelsSyncConfigDir(targetConfigDir);
+  const syncedChannels = [...plan.appliedChannels];
+
   if (activeConfigDir) {
-    const syncResult = syncDiscordChannelsEnvToConfigDir(activeConfigDir);
-    if (!syncResult.synced && syncResult.reason !== 'already_current') {
-      const suffix = syncResult.error ? ` (${syncResult.error})` : '';
-      console.error(
-        warn(
-          `Discord Channels auto-enable skipped: failed to sync token env to ${syncResult.targetPath}${suffix}`
-        )
-      );
-      return args;
+    for (const channelId of [...syncedChannels]) {
+      if (!getOfficialChannelTokenIds().includes(channelId)) {
+        continue;
+      }
+
+      const syncResult = syncOfficialChannelEnvToConfigDir(channelId, activeConfigDir);
+      if (!syncResult.synced && syncResult.reason !== 'already_current') {
+        const suffix = syncResult.error ? ` (${syncResult.error})` : '';
+        console.error(
+          warn(
+            `${getOfficialChannelDisplayName(channelId)} auto-enable skipped: failed to sync channel env to ${syncResult.targetPath}${suffix}`
+          )
+        );
+        syncedChannels.splice(syncedChannels.indexOf(channelId), 1);
+      }
     }
   }
 
-  return plan.args;
+  if (syncedChannels.length === 0) {
+    return args;
+  }
+
+  return buildOfficialChannelsArgs(args, syncedChannels, plan.wantsPermissionBypass);
 }
 
 async function main(): Promise<void> {
