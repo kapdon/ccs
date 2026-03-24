@@ -471,7 +471,10 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
 
   printSubSection('Official Channels (official Claude plugins)', [
     ['ccs config channels', 'Show current status'],
-    ['ccs config channels --set telegram,discord', 'Auto-add selected channels on native Claude sessions'],
+    [
+      'ccs config channels --set telegram,discord',
+      'Auto-add selected channels on native Claude sessions',
+    ],
     ['ccs config channels --set all', 'Enable Telegram, Discord, and iMessage'],
     ['ccs config channels --unattended', 'Also add --dangerously-skip-permissions'],
     ['ccs config channels --set-token telegram=<token>', 'Save TELEGRAM_BOT_TOKEN'],

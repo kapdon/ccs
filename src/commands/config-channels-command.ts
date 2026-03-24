@@ -62,9 +62,7 @@ function parseTokenAssignment(value: string): {
 } | null {
   const separatorIndex = value.indexOf('=');
   if (separatorIndex === -1) {
-    return value.trim()
-      ? { channelId: 'discord', token: value.trim() }
-      : null;
+    return value.trim() ? { channelId: 'discord', token: value.trim() } : null;
   }
 
   const channelId = value.slice(0, separatorIndex).trim().toLowerCase();
@@ -139,14 +137,20 @@ function showHelp(): void {
   console.log(`  ${color('--clear', 'command')}              Clear all selected channels`);
   console.log(`  ${color('--enable', 'command')}             Legacy alias: add Discord`);
   console.log(`  ${color('--disable', 'command')}            Legacy alias: remove Discord`);
-  console.log(`  ${color('--unattended', 'command')}         Also add --dangerously-skip-permissions`);
+  console.log(
+    `  ${color('--unattended', 'command')}         Also add --dangerously-skip-permissions`
+  );
   console.log(`  ${color('--no-unattended', 'command')}      Disable unattended runtime flag`);
   console.log(`  ${color('--set-token <spec>', 'command')}   ${getOfficialChannelTokenHelp()}`);
-  console.log(`  ${color('--clear-token [channel]', 'command')} ${getOfficialChannelClearTokenHelp()}`);
+  console.log(
+    `  ${color('--clear-token [channel]', 'command')} ${getOfficialChannelClearTokenHelp()}`
+  );
   console.log(`  ${color('--help, -h', 'command')}           Show this help`);
   console.log('');
   console.log(subheader('Examples:'));
-  console.log(`  $ ${color('ccs config channels', 'command')}                           ${dim('# Show status')}`);
+  console.log(
+    `  $ ${color('ccs config channels', 'command')}                           ${dim('# Show status')}`
+  );
   console.log(
     `  $ ${color('ccs config channels --set telegram,discord', 'command')}  ${dim('# Enable Telegram + Discord')}`
   );
@@ -170,13 +174,17 @@ function showStatus(): void {
   console.log('');
   console.log(header('Official Channels Configuration'));
   console.log('');
-  console.log(`  Channels:     ${selected.length > 0 ? ok(getChannelConfigSelectionLabel(selected)) : warn('Disabled')}`);
+  console.log(
+    `  Channels:     ${selected.length > 0 ? ok(getChannelConfigSelectionLabel(selected)) : warn('Disabled')}`
+  );
   console.log(`  Unattended:   ${config.unattended ? warn('Enabled') : info('Disabled')}`);
   console.log(`  Bun:          ${bunReady ? ok('Installed') : warn('Missing')}`);
   console.log('');
   console.log(subheader('Applies To:'));
   console.log(`  ${dim(getOfficialChannelsCompatibilityMessage())}`);
-  console.log(`  ${dim(`Supported profiles: ${getOfficialChannelsSupportedProfiles().join(', ')}`)}`);
+  console.log(
+    `  ${dim(`Supported profiles: ${getOfficialChannelsSupportedProfiles().join(', ')}`)}`
+  );
   console.log('');
   console.log(subheader('Channels:'));
   for (const channelId of expandOfficialChannelSelection('all')) {
@@ -195,7 +203,9 @@ function showStatus(): void {
     console.log(`  ${enabled ? '[x]' : '[ ]'} ${displayName}: ${status}`);
     console.log(`      ${dim(getOfficialChannelSummary(channelId))}`);
     if (envKey) {
-      console.log(`      ${dim(`${envKey}: ${tokenConfigured ? 'configured' : 'not configured'}`)}`);
+      console.log(
+        `      ${dim(`${envKey}: ${tokenConfigured ? 'configured' : 'not configured'}`)}`
+      );
       console.log(`      ${dim(getOfficialChannelEnvPath(channelId))}`);
     }
     console.log(`      ${dim(getOfficialChannelReadyMessage(channelId))}`);
@@ -242,8 +252,13 @@ export async function handleConfigChannelsCommand(args: string[]): Promise<void>
     process.exitCode = 1;
     return;
   }
-  if (options.setSelection !== undefined && !isOfficialChannelSelectionValid(options.setSelection)) {
-    console.error(fail(`Invalid --set value: ${options.setSelection} (${getOfficialChannelChoices()} or all)`));
+  if (
+    options.setSelection !== undefined &&
+    !isOfficialChannelSelectionValid(options.setSelection)
+  ) {
+    console.error(
+      fail(`Invalid --set value: ${options.setSelection} (${getOfficialChannelChoices()} or all)`)
+    );
     process.exitCode = 1;
     return;
   }
@@ -261,7 +276,9 @@ export async function handleConfigChannelsCommand(args: string[]): Promise<void>
   }
   if (options.clearTokenInvalid) {
     console.error(
-      fail(`Invalid --clear-token value: ${options.clearTokenInvalid} (use ${getOfficialChannelChoices()})`)
+      fail(
+        `Invalid --clear-token value: ${options.clearTokenInvalid} (use ${getOfficialChannelChoices()})`
+      )
     );
     process.exitCode = 1;
     return;

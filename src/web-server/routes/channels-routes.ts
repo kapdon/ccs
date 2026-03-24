@@ -71,7 +71,8 @@ router.put('/', (req: Request, res: Response): void => {
 
   if (
     selected !== undefined &&
-    (!Array.isArray(selected) || selected.some((value) => typeof value !== 'string' || !isOfficialChannelId(value)))
+    (!Array.isArray(selected) ||
+      selected.some((value) => typeof value !== 'string' || !isOfficialChannelId(value)))
   ) {
     res.status(400).json({ error: 'selected must be an array of official channel IDs' });
     return;
@@ -84,7 +85,7 @@ router.put('/', (req: Request, res: Response): void => {
   try {
     const updated = mutateUnifiedConfig((config) => {
       config.channels = {
-        selected: selected ? [...new Set(selected)] : config.channels?.selected ?? [],
+        selected: selected ? [...new Set(selected)] : (config.channels?.selected ?? []),
         unattended: unattended ?? config.channels?.unattended ?? false,
       };
     });

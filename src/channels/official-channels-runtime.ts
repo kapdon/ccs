@@ -1,10 +1,7 @@
 import { spawnSync } from 'child_process';
 import type { TargetType } from '../targets/target-adapter';
 import type { ProfileType } from '../types/profile';
-import type {
-  OfficialChannelId,
-  OfficialChannelsConfig,
-} from '../config/unified-config-types';
+import type { OfficialChannelId, OfficialChannelsConfig } from '../config/unified-config-types';
 
 export interface OfficialChannelDefinition {
   id: OfficialChannelId;
@@ -132,7 +129,11 @@ export function buildOfficialChannelsArgs(
   channels: OfficialChannelId[],
   includePermissionBypass: boolean
 ): string[] {
-  const nextArgs = [...args, '--channels', ...channels.map((channel) => OFFICIAL_CHANNELS[channel].pluginSpec)];
+  const nextArgs = [
+    ...args,
+    '--channels',
+    ...channels.map((channel) => OFFICIAL_CHANNELS[channel].pluginSpec),
+  ];
 
   if (includePermissionBypass) {
     nextArgs.push('--dangerously-skip-permissions');
@@ -191,9 +192,7 @@ export function resolveOfficialChannelsLaunchPlan(
     const channel = OFFICIAL_CHANNELS[channelId];
 
     if (channel.requiresMacOS && !isMacOS()) {
-      skippedMessages.push(
-        `${channel.displayName} auto-enable skipped because it requires macOS.`
-      );
+      skippedMessages.push(`${channel.displayName} auto-enable skipped because it requires macOS.`);
       continue;
     }
 
@@ -256,7 +255,9 @@ export function getOfficialChannelSummary(channelId: OfficialChannelId): string 
   return 'macOS-only. No bot token required, but Messages permissions are required.';
 }
 
-export function getOfficialChannelUnavailableReason(channelId: OfficialChannelId): string | undefined {
+export function getOfficialChannelUnavailableReason(
+  channelId: OfficialChannelId
+): string | undefined {
   if (channelId === 'imessage' && !isMacOS()) {
     return 'Requires macOS.';
   }
@@ -300,7 +301,9 @@ export function isOfficialChannelSelectionValid(selection: string): boolean {
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
 
-  return parsed.length > 0 && parsed.every((value) => value === 'all' || isOfficialChannelId(value));
+  return (
+    parsed.length > 0 && parsed.every((value) => value === 'all' || isOfficialChannelId(value))
+  );
 }
 
 export function resolveLegacyDiscordSelection(enabled: boolean | undefined): OfficialChannelId[] {
@@ -369,7 +372,10 @@ export function getOfficialChannelsDocsSummary(): string {
   return 'Supported official channels are Telegram, Discord, and iMessage.';
 }
 
-export function getOfficialChannelSyncFailureMessage(channelId: OfficialChannelId, targetPath: string): string {
+export function getOfficialChannelSyncFailureMessage(
+  channelId: OfficialChannelId,
+  targetPath: string
+): string {
   return `${getOfficialChannelDisplayName(channelId)} auto-enable skipped: failed to sync channel env to ${targetPath}`;
 }
 

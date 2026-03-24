@@ -305,7 +305,9 @@ function normalizeOfficialChannelsConfig(
   partial: Partial<UnifiedConfig> & { discord_channels?: LegacyDiscordChannelsConfig }
 ): OfficialChannelsConfig {
   const rawSelected = Array.isArray(partial.channels?.selected)
-    ? partial.channels.selected.filter((value): value is OfficialChannelId => isOfficialChannelId(value))
+    ? partial.channels.selected.filter((value): value is OfficialChannelId =>
+        isOfficialChannelId(value)
+      )
     : [];
 
   return {
@@ -806,16 +808,15 @@ function generateYamlWithComments(config: UnifiedConfig): string {
     lines.push('# Runtime-only: CCS injects --channels at launch for compatible Claude sessions.');
     lines.push('# Bot tokens live in Claude channel env files, not in config.yaml.');
     lines.push('# Use selected: [telegram, discord, imessage] to choose channels.');
-    lines.push('# unattended adds --dangerously-skip-permissions only when channel auto-enable is active.');
+    lines.push(
+      '# unattended adds --dangerously-skip-permissions only when channel auto-enable is active.'
+    );
     lines.push('# Compatible sessions: native Claude default/account profiles only.');
     lines.push('# Configure via: ccs config channels or the Settings > Channels dashboard tab.');
     lines.push('# ----------------------------------------------------------------------------');
     lines.push(
       yaml
-        .dump(
-          { channels: config.channels },
-          { indent: 2, lineWidth: -1, quotingType: '"' }
-        )
+        .dump({ channels: config.channels }, { indent: 2, lineWidth: -1, quotingType: '"' })
         .trim()
     );
     lines.push('');
