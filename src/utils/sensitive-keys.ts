@@ -11,10 +11,12 @@
  */
 export const SENSITIVE_KEY_PATTERNS = [
   /^ANTHROPIC_AUTH_TOKEN$/, // Exact match for Anthropic auth token
+  /_TOKEN$/, // Keys ending with _TOKEN
   /_API_KEY$/, // Keys ending with _API_KEY
   /_AUTH_TOKEN$/, // Keys ending with _AUTH_TOKEN
   /_SECRET$/, // Keys ending with _SECRET
   /_SECRET_KEY$/, // Keys ending with _SECRET_KEY
+  /^TOKEN$/, // Exact match for TOKEN
   /^API_KEY$/, // Exact match for API_KEY
   /^AUTH_TOKEN$/, // Exact match for AUTH_TOKEN
   /^SECRET$/, // Exact match for SECRET
