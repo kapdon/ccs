@@ -1,97 +1,71 @@
 # WebSearch Configuration Guide
 
-Last Updated: 2026-02-26
+Last Updated: 2026-03-23
 
-CCS provides automatic web search capability for all profiles, including third-party providers that cannot access Anthropic's native WebSearch API.
+CCS provides automatic web search for third-party profiles that cannot access Anthropic's native WebSearch API.
 
 ## How WebSearch Works
 
 ### Native Claude Accounts
 
-When using a native Claude subscription account, WebSearch is handled by Anthropic's server-side API ($10/1000 searches, usage-based billing).
+Native Claude subscription accounts still use Anthropic's server-side WebSearch directly.
 
 ### Third-Party Profiles
 
-Third-party profiles (OAuth and API-based) cannot use Anthropic's WebSearch because:
-- Claude Code CLI executes tools locally
-- CLIProxyAPI only receives conversation messages
-- Tool execution never reaches the third-party backend
-
-CCS solves this with a hybrid fallback approach:
-
-1. **Gemini CLI Transformer** (Primary) - Uses positional Gemini prompt mode (with legacy `-p` fallback) and `google_web_search` tool
-2. **MCP Fallback Chain** (Secondary) - MCP-based web search servers
+Third-party profiles cannot execute Anthropic's server-side WebSearch because the tool never reaches their backend. CCS now solves that by intercepting WebSearch and running real local search providers directly.
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                   Claude Code CLI                             │
-│                                                               │
-│  WebSearch Tool Request                                       │
-│       │                                                       │
-│       ├── Native Claude Account? → Anthropic WebSearch API   │
-│       │                            ($10/1000 searches)        │
-│       │                                                       │
-│       └── Third-party Profile? → PreToolUse Hook             │
-│                                   │                           │
-│                                   ├── 1. Gemini CLI           │
-│                                   │    (google_web_search)    │
-│                                   │    No API key needed!     │
-│                                   │                           │
-│                                   └── 2. MCP Fallback Chain   │
-│                                        ├── web-search-prime   │
-│                                        ├── Brave Search       │
-│                                        └── Tavily             │
+│                   Claude Code CLI                           │
+│                                                              │
+│  WebSearch Tool Request                                      │
+│       │                                                      │
+│       ├── Native Claude Account? → Anthropic WebSearch API  │
+│       │                                                      │
+│       └── Third-party Profile? → PreToolUse Hook            │
+│                                   │                          │
+│                                   ├── 1. Exa Search API      │
+│                                   ├── 2. Tavily Search API   │
+│                                   ├── 3. Brave Search API    │
+│                                   ├── 4. DuckDuckGo HTML     │
+│                                   └── 5. Legacy CLI fallback │
+│                                      (Gemini/OpenCode/Grok)  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-## Gemini CLI Integration (Primary)
+## Why This Changed
 
-The **ultimate solution** for third-party WebSearch. Uses `gemini` CLI with OAuth authentication - **no API key needed!**
+The previous design asked another model CLI to perform web search and summarize the answer. That was brittle:
 
-### How It Works
+- CLI syntax changed upstream
+- auth state varied per tool
+- prompt/tool behavior drifted across releases
 
-1. A PreToolUse hook intercepts WebSearch tool calls
-2. Executes `gemini "<prompt>"` (positional mode) with explicit google_web_search instruction
-3. Returns search results directly to Claude via the hook's deny reason
-4. Claude receives full search results and continues the conversation
+The new flow matches the `goclaw` model more closely: web search is treated as a first-class deterministic capability, not an LLM-to-LLM workaround.
 
-### Requirements
+## Providers
 
-- `gemini` CLI installed and authenticated (run `gemini` to authenticate via browser)
-- OAuth authentication (no GEMINI_API_KEY needed)
-
-### Installation
-
-The Gemini CLI is installed via npm:
-```bash
-npm install -g @google/gemini-cli
-```
-
-Then authenticate by running gemini once (opens browser):
-```bash
-gemini
-```
-
-## MCP Providers
-
-| Provider | Type | Cost | API Key Required | Notes |
-|----------|------|------|------------------|-------|
-| web-search-prime | HTTP MCP | z.ai subscription | No | Requires z.ai coding plan |
-| Brave Search | stdio MCP | Free tier | `BRAVE_API_KEY` | 15k queries/month |
-| Tavily | stdio MCP | Paid | `TAVILY_API_KEY` | AI-optimized search |
+| Provider | Type | Setup | Default | Notes |
+|----------|------|-------|---------|-------|
+| Exa | HTTP API | `EXA_API_KEY` | No | High-quality API search with extracted content |
+| Tavily | HTTP API | `TAVILY_API_KEY` | No | Agent-oriented search API |
+| DuckDuckGo | HTML fetch | None | Yes | Built-in zero-setup fallback |
+| Brave Search | HTTP API | `BRAVE_API_KEY` | No | Cleaner snippets and metadata |
+| Gemini CLI | Legacy CLI | `npm i -g @google/gemini-cli` | No | Optional compatibility fallback |
+| OpenCode | Legacy CLI | `curl -fsSL https://opencode.ai/install \| bash` | No | Optional compatibility fallback |
+| Grok CLI | Legacy CLI | `npm i -g @vibe-kit/grok-cli` + `GROK_API_KEY` | No | Optional compatibility fallback |
 
 ## Configuration
 
 ### Via Dashboard
 
-1. Open dashboard: `ccs config`
-2. Navigate to **Settings** page
-3. Configure WebSearch options:
-   - **Enable/Disable**: Toggle auto-configuration
-   - **Provider**: Choose preferred provider
-   - **Fallback**: Enable/disable fallback chain
+Open `ccs config` → `Settings` → `WebSearch`.
+
+- Enable Exa, Tavily, Brave, or DuckDuckGo in the backend chain
+- Export the matching API key first for Exa, Tavily, or Brave
+- Review whether any legacy fallback CLIs are still enabled in config
 
 ### Via Config File
 
@@ -99,111 +73,74 @@ Edit `~/.ccs/config.yaml`:
 
 ```yaml
 websearch:
-  enabled: true                    # Enable auto-config (default: true)
-  provider: auto                   # auto | web-search-prime | brave | tavily
-  fallback: true                   # Enable fallback chain (default: true)
-  webSearchPrimeUrl: "https://..."  # Optional: custom endpoint
-
-  # Gemini CLI configuration (new!)
-  gemini:
-    enabled: true                  # Use Gemini CLI for WebSearch (default: true)
-    timeout: 55                    # Timeout in seconds (default: 55)
+  enabled: true
+  providers:
+    exa:
+      enabled: false
+      max_results: 5
+    tavily:
+      enabled: false
+      max_results: 5
+    duckduckgo:
+      enabled: true
+      max_results: 5
+    brave:
+      enabled: false
+      max_results: 5
+    gemini:
+      enabled: false
+      model: gemini-2.5-flash
+      timeout: 55
+    opencode:
+      enabled: false
+      model: opencode/grok-code
+      timeout: 90
+    grok:
+      enabled: false
+      timeout: 55
 ```
 
-### Environment Variables
+## Environment Variables
 
-The WebSearch hook also respects these environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CCS_WEBSEARCH_SKIP` | Skip WebSearch hook entirely | `0` |
-| `CCS_GEMINI_SKIP` | Skip Gemini CLI, use MCP only | `0` |
-| `CCS_GEMINI_TIMEOUT` | Gemini CLI timeout (seconds) | `55` |
-| `CCS_DEBUG` | Enable debug output | `0` |
-
-### Provider Options
-
-- **auto** (default): Uses web-search-prime, adds Brave/Tavily if API keys available
-- **web-search-prime**: Requires z.ai coding plan subscription
-- **brave**: Requires `BRAVE_API_KEY` env var
-- **tavily**: Requires `TAVILY_API_KEY` env var
-
-## Setting Up Optional Providers
-
-### Brave Search (Free Tier)
-
-1. Get API key: [brave.com/search/api](https://brave.com/search/api)
-2. Set environment variable:
-   ```bash
-   export BRAVE_API_KEY="your-api-key"
-   ```
-3. Restart CCS - Brave will be added to fallback chain
-
-**Free tier limits**: 15,000 queries/month, 1 query/second
-
-### Tavily (AI-Optimized)
-
-1. Get API key: [tavily.com](https://tavily.com)
-2. Set environment variable:
-   ```bash
-   export TAVILY_API_KEY="your-api-key"
-   ```
-3. Restart CCS - Tavily will be added to fallback chain
-
-## MCP Configuration
-
-CCS writes MCP configuration to `~/.claude/.mcp.json`. Example:
-
-```json
-{
-  "mcpServers": {
-    "web-search-prime": {
-      "type": "http",
-      "url": "https://api.z.ai/api/mcp/web_search_prime/mcp",
-      "headers": {}
-    },
-    "brave-search": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
-      "env": { "BRAVE_API_KEY": "..." }
-    }
-  }
-}
-```
+| Variable | Description |
+|----------|-------------|
+| `EXA_API_KEY` | Enables Exa when `providers.exa.enabled: true` |
+| `TAVILY_API_KEY` | Enables Tavily when `providers.tavily.enabled: true` |
+| `BRAVE_API_KEY` | Enables Brave Search when `providers.brave.enabled: true` |
+| `GROK_API_KEY` | Required only for legacy Grok CLI fallback |
+| `CCS_WEBSEARCH_SKIP` | Skip hook entirely |
+| `CCS_DEBUG` | Verbose hook logging |
 
 ## Troubleshooting
 
-### Gemini CLI Issues
+### WebSearch says "Ready (DuckDuckGo)"
 
-1. **Not installed**: Install with `npm install -g @google/gemini-cli`
-2. **Not authenticated**: Run `gemini` to open browser for OAuth login
-3. **Timeout**: Increase timeout in config or via `CCS_GEMINI_TIMEOUT=90`
-4. **Skip Gemini**: Set `CCS_GEMINI_SKIP=1` to use MCP fallback only
+That is expected. DuckDuckGo is the default zero-setup backend.
 
-### WebSearch Not Working
+### Exa, Tavily, or Brave is enabled but not ready
 
-1. **Check config**: Ensure `websearch.enabled: true` in config
-2. **Verify MCP**: Check `~/.claude/.mcp.json` exists
-3. **Debug mode**: Run with `CCS_DEBUG=1 ccs gemini` for verbose output
+Export the matching API key in the environment that launches CCS, then refresh status:
 
-### MCP Server Errors
+```bash
+export EXA_API_KEY="your-api-key"
+# or: export TAVILY_API_KEY="your-api-key"
+# or: export BRAVE_API_KEY="your-api-key"
+ccs config
+```
 
-1. **Network issues**: web-search-prime requires internet access
-2. **npx failures**: Brave/Tavily require Node.js and npx
-3. **API key issues**: Verify env vars are set correctly
+### I still want Gemini/OpenCode/Grok fallback
 
-### Existing MCP Config
+Those providers remain supported, but they are no longer the primary path. Enable them explicitly in `config.yaml` if you want them as last-resort fallback.
 
-CCS respects existing web search MCP configuration. If you have manually configured web search MCPs, CCS will not overwrite them.
+### WebSearch returns no results
 
-To reset:
-1. Remove web search entries from `~/.claude/.mcp.json`
-2. Run any CCS third-party profile to regenerate
+1. Check `websearch.enabled: true`
+2. Keep DuckDuckGo enabled unless you have a strong reason to disable it
+3. If using Exa, Tavily, or Brave, verify the matching API key
+4. Run with `CCS_DEBUG=1` for hook logs
 
 ## Security Considerations
 
-- API keys are stored in environment variables only
+- API keys stay in environment variables, not in dashboard state
 - Never commit API keys to version control
-- Use `.env` files with proper permissions (chmod 600)
-- Dashboard settings are stored in `~/.ccs/config.yaml` (no API keys)
+- Use shell profile or `.env` tooling with proper permissions

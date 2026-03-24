@@ -86,11 +86,12 @@ Spawn Target Process
   - Spawns: `droid -m custom:ccs-<profile> <args>`
   - Model config includes baseUrl, apiKey, provider
 
-**Binary alias pattern (busybox-style):**
+**Runtime alias pattern (built-in bins / argv[0]-style):**
 
 ```
-ccs  → Target: claude (default)
-ccsd → Target: droid (auto-selected via argv[0])
+ccs        → Target: claude (default)
+ccs-droid  → Target: droid (explicit alias)
+ccsd       → Target: droid (legacy shortcut)
 ```
 
 For details on the adapter architecture, see [Target Adapters](./target-adapters.md).
@@ -392,7 +393,7 @@ See [Provider Flows](./provider-flows.md) → Authentication Flow section.
         |
         +---> Creates symlink: ccs --> dist/ccs.js
         |
-        +---> Binary alias: ccsd → ccs (auto-selects droid target)
+        +---> Runtime aliases: ccs-droid / ccsd → ccs (auto-select droid target)
         |
         +---> First run creates: ~/.ccs/
 ```

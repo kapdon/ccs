@@ -200,7 +200,8 @@ Resolves which adapter to use via `resolveTargetType()`:
    ↓
 2. Profile config: profileConfig.target field
    ↓
-3. argv[0] detection (busybox pattern):
+3. argv[0] detection (runtime alias pattern):
+   - ccs-droid → droid
    - ccsd → droid
    - ccs → default
    ↓

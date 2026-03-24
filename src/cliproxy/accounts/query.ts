@@ -6,7 +6,7 @@
 import { CLIProxyProvider } from '../types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
 import { AccountInfo } from './types';
-import { loadAccountsRegistry, syncRegistryWithTokenFiles, saveAccountsRegistry } from './registry';
+import { loadAccountsRegistry, syncRegistryWithTokenFiles } from './registry';
 
 /**
  * Get all accounts for a provider
@@ -14,10 +14,8 @@ import { loadAccountsRegistry, syncRegistryWithTokenFiles, saveAccountsRegistry 
 export function getProviderAccounts(provider: CLIProxyProvider): AccountInfo[] {
   const registry = loadAccountsRegistry();
 
-  // Sync with actual token files (removes stale entries)
-  if (syncRegistryWithTokenFiles(registry)) {
-    saveAccountsRegistry(registry);
-  }
+  // Sync in-memory view with actual token files without mutating disk on read.
+  syncRegistryWithTokenFiles(registry);
 
   const providerAccounts = registry.providers[provider];
 
@@ -67,12 +65,12 @@ export function findAccountByQuery(provider: CLIProxyProvider, query: string): A
   if (exactMatch) return exactMatch;
 
   // Partial match on nickname or email prefix
-  const partialMatch = accounts.find(
+  const partialMatches = accounts.filter(
     (a) =>
       a.nickname?.toLowerCase().startsWith(lowerQuery) ||
       a.email?.toLowerCase().startsWith(lowerQuery)
   );
-  return partialMatch || null;
+  return partialMatches.length === 1 ? partialMatches[0] : null;
 }
 
 /**

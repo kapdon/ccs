@@ -290,7 +290,10 @@ export async function handleCreate(
         `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses droid by default')}`
       );
       console.log(
-        `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+        `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+      );
+      console.log(
+        `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# legacy shortcut')}`
       );
       console.log(
         `  ${color(`ccs ${name} --target claude "your prompt"`, 'command')} ${dim('# override to Claude')}`
@@ -300,7 +303,10 @@ export async function handleCreate(
         `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses claude by default')}`
       );
       console.log(
-        `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# run on droid for this call')}`
+        `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit one-off droid alias')}`
+      );
+      console.log(
+        `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# target flag alternative')}`
       );
     }
     console.log('');
@@ -452,8 +458,9 @@ export async function handleCreate(
       `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses droid by default')}`
     );
     console.log(
-      `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+      `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
     );
+    console.log(`  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# legacy shortcut')}`);
     console.log(
       `  ${color(`ccs ${name} --target claude "your prompt"`, 'command')} ${dim('# override to Claude')}`
     );
@@ -462,7 +469,10 @@ export async function handleCreate(
       `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses claude by default')}`
     );
     console.log(
-      `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# run on droid for this call')}`
+      `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit one-off droid alias')}`
+    );
+    console.log(
+      `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# target flag alternative')}`
     );
   }
   console.log('');
@@ -697,7 +707,10 @@ export async function handleEdit(
         `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses droid by default')}`
       );
       console.log(
-        `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+        `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit droid alias')}`
+      );
+      console.log(
+        `  ${color(`ccsd ${name} "your prompt"`, 'command')} ${dim('# legacy shortcut')}`
       );
       console.log(
         `  ${color(`ccs ${name} --target claude "your prompt"`, 'command')} ${dim('# override to Claude')}`
@@ -707,7 +720,10 @@ export async function handleEdit(
         `  ${color(`ccs ${name} "your prompt"`, 'command')} ${dim('# uses claude by default')}`
       );
       console.log(
-        `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# run on droid for this call')}`
+        `  ${color(`ccs-droid ${name} "your prompt"`, 'command')} ${dim('# explicit one-off droid alias')}`
+      );
+      console.log(
+        `  ${color(`ccs ${name} --target droid "your prompt"`, 'command')} ${dim('# target flag alternative')}`
       );
     }
     console.log('');

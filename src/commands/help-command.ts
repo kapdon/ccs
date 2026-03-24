@@ -209,7 +209,7 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
         'Show auth URL and prompt for callback paste (cross-browser)',
       ],
       ['ccs <provider> --accounts', 'List all accounts'],
-      ['ccs <provider> --use <name>', 'Switch to account'],
+      ['ccs <provider> --use <nickname-or-id>', 'Switch to account'],
       ['ccs <provider> --config', 'Change model (agy, gemini)'],
       [
         'ccs agy --accept-agr-risk',
@@ -355,22 +355,24 @@ Run ${color('ccs config', 'command')} for web dashboard`.trim();
 
   // Aliases
   printSubSection('Aliases', [
-    ['ccsd <profile> [args]', 'Shorthand for: ccs <profile> --target droid'],
+    ['ccs-droid <profile> [args]', 'Explicit Droid runtime alias'],
+    ['ccsd <profile> [args]', 'Legacy shortcut for: ccs-droid <profile> [args]'],
   ]);
 
   // Multi-target examples
   printSubSection('Multi-Target', [
     ['ccs glm --target droid', 'Run GLM profile on Droid CLI'],
-    ['ccsd glm', 'Same as above (alias)'],
-    ['ccsd codex', 'Run built-in CLIProxy Codex profile on Droid'],
-    ['ccsd agy', 'Run built-in CLIProxy Antigravity profile on Droid'],
+    ['ccs-droid glm', 'Same as above (explicit alias)'],
+    ['ccsd glm', 'Legacy shortcut for ccs-droid'],
+    ['ccs-droid codex', 'Run built-in CLIProxy Codex profile on Droid'],
+    ['ccs-droid agy', 'Run built-in CLIProxy Antigravity profile on Droid'],
     [
-      'ccsd codex exec --skip-permissions-unsafe "fix failing tests"',
+      'ccs-droid codex exec --skip-permissions-unsafe "fix failing tests"',
       'Pass through Droid exec mode',
     ],
-    ['ccsd codex -m custom:gpt-5.3-codex "fix failing tests"', 'Auto-routes short exec flags'],
+    ['ccs-droid codex -m custom:gpt-5.3-codex "fix failing tests"', 'Auto-routes short exec flags'],
     [
-      'ccsd codex --skip-permissions-unsafe "fix failing tests"',
+      'ccs-droid codex --skip-permissions-unsafe "fix failing tests"',
       'Auto-routes to Droid exec when exec-only flags are detected',
     ],
     [

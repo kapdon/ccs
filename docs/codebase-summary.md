@@ -246,7 +246,7 @@ The targets module provides an extensible interface for dispatching profiles to 
 2. **Target Resolution** - Priority order:
    - `--target <cli>` flag (CLI argument)
    - Per-profile `target` field (from config.yaml)
-   - `argv[0]` detection (busybox pattern: `ccsd` → droid)
+   - `argv[0]` detection (runtime alias pattern: `ccs-droid` / `ccsd` → droid)
    - Default: `claude`
 
 3. **Implementations:**

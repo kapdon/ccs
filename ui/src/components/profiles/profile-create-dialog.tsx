@@ -524,11 +524,25 @@ export function ProfileCreateDialog({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Run with{' '}
-                    <code className="bg-muted px-1 rounded text-[10px]">
-                      {targetValue === 'droid' ? 'ccsd' : 'ccs'}
-                    </code>{' '}
-                    by default. You can still override each run with{' '}
+                    {targetValue === 'droid' ? (
+                      <>
+                        {t('profileEditor.targetHintPreferredAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs-droid</code>.
+                      </>
+                    ) : (
+                      <>
+                        {t('profileEditor.targetHintClaudeDefault')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccs</code>.
+                      </>
+                    )}
+                    {targetValue === 'droid' ? (
+                      <>
+                        {' '}
+                        {t('profileEditor.targetHintLegacyAlias')}{' '}
+                        <code className="bg-muted px-1 rounded text-[10px]">ccsd</code>.
+                      </>
+                    ) : null}{' '}
+                    {t('profileEditor.targetHintOverride')}{' '}
                     <code className="bg-muted px-1 rounded text-[10px]">--target</code>.
                   </p>
                 </div>

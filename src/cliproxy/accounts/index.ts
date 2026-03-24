@@ -21,8 +21,11 @@ export {
   getPausedDir,
   getAccountTokenPath,
   extractAccountIdFromTokenFile,
+  deriveNoEmailProviderAccountId,
   generateNickname,
   validateNickname,
+  hasAccountNameConflict,
+  findAccountNameMatch,
   tokenFileExists,
 } from './token-file-ops';
 

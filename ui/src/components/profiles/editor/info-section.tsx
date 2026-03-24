@@ -90,16 +90,10 @@ export function InfoSection({ profileName, target, data }: InfoSectionProps) {
               </Label>
               <div className="mt-1 flex gap-2">
                 <code className="flex-1 px-2 py-1.5 bg-muted rounded text-xs font-mono truncate">
-                  {isDroidTarget
-                    ? `ccsd ${profileName} "prompt"`
-                    : `ccs ${profileName} --target droid "prompt"`}
+                  {`ccs-droid ${profileName} "prompt"`}
                 </code>
                 <CopyButton
-                  value={
-                    isDroidTarget
-                      ? `ccsd ${profileName} "prompt"`
-                      : `ccs ${profileName} --target droid "prompt"`
-                  }
+                  value={`ccs-droid ${profileName} "prompt"`}
                   size="icon"
                   className="h-6 w-6"
                 />
@@ -109,14 +103,14 @@ export function InfoSection({ profileName, target, data }: InfoSectionProps) {
               <Label className="text-xs text-muted-foreground">
                 {isDroidTarget
                   ? t('profileEditor.overrideToClaude')
-                  : t('profileEditor.overrideToClaudeExplicit')}
+                  : t('profileEditor.runOnDroidWithFlag')}
               </Label>
               <div className="mt-1 flex gap-2">
                 <code className="flex-1 px-2 py-1.5 bg-muted rounded text-xs font-mono truncate">
-                  ccs {profileName} --target claude "prompt"
+                  ccs {profileName} --target {isDroidTarget ? 'claude' : 'droid'} "prompt"
                 </code>
                 <CopyButton
-                  value={`ccs ${profileName} --target claude "prompt"`}
+                  value={`ccs ${profileName} --target ${isDroidTarget ? 'claude' : 'droid'} "prompt"`}
                   size="icon"
                   className="h-6 w-6"
                 />

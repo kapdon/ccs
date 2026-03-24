@@ -8,70 +8,164 @@
 
 import { ok, warn, fail, info } from '../ui';
 import { getWebSearchConfig } from '../../config/unified-config-loader';
-import { getGeminiCliStatus, hasGeminiCli, isGeminiAuthenticated } from './gemini-cli';
-import { getGrokCliStatus, hasGrokCli } from './grok-cli';
-import { getOpenCodeCliStatus, hasOpenCodeCli } from './opencode-cli';
+import { getGeminiCliStatus, isGeminiAuthenticated } from './gemini-cli';
+import { getGrokCliStatus } from './grok-cli';
+import { getOpenCodeCliStatus } from './opencode-cli';
 import type { WebSearchCliInfo, WebSearchStatus } from './types';
 
-/**
- * Get all WebSearch CLI providers with their status
- */
-export function getWebSearchCliProviders(): WebSearchCliInfo[] {
+function hasEnvValue(name: string): boolean {
+  return (process.env[name] || '').trim().length > 0;
+}
+
+function hasAnyEnvValue(names: string[]): boolean {
+  return names.some((name) => hasEnvValue(name));
+}
+
+function getLegacyProviderStatuses(): WebSearchCliInfo[] {
+  const wsConfig = getWebSearchConfig();
   const geminiStatus = getGeminiCliStatus();
   const grokStatus = getGrokCliStatus();
   const opencodeStatus = getOpenCodeCliStatus();
+  const geminiAuthed = geminiStatus.installed && isGeminiAuthenticated();
 
   return [
     {
       id: 'gemini',
+      kind: 'legacy-cli',
       name: 'Gemini CLI',
       command: 'gemini',
-      installed: geminiStatus.installed,
+      enabled: wsConfig.providers?.gemini?.enabled ?? false,
+      available: geminiAuthed,
       version: geminiStatus.version ?? null,
       installCommand: 'npm install -g @google/gemini-cli',
       docsUrl: 'https://github.com/google-gemini/gemini-cli',
       requiresApiKey: false,
-      description: 'Google Gemini with web search (FREE tier: 1000 req/day)',
-      freeTier: true,
+      description: 'Optional legacy LLM fallback with Google web search.',
+      detail: geminiStatus.installed
+        ? geminiAuthed
+          ? 'Authenticated'
+          : "Run 'gemini' to login"
+        : 'Not installed',
     },
     {
       id: 'opencode',
+      kind: 'legacy-cli',
       name: 'OpenCode',
       command: 'opencode',
-      installed: opencodeStatus.installed,
+      enabled: wsConfig.providers?.opencode?.enabled ?? false,
+      available: opencodeStatus.installed,
       version: opencodeStatus.version ?? null,
       installCommand: 'curl -fsSL https://opencode.ai/install | bash',
       docsUrl: 'https://github.com/sst/opencode',
       requiresApiKey: false,
-      description: 'OpenCode with built-in web search (FREE via Zen)',
-      freeTier: true,
+      description: 'Optional legacy LLM fallback via OpenCode.',
+      detail: opencodeStatus.installed ? 'Installed' : 'Not installed',
     },
     {
       id: 'grok',
+      kind: 'legacy-cli',
       name: 'Grok CLI',
       command: 'grok',
-      installed: grokStatus.installed,
+      enabled: wsConfig.providers?.grok?.enabled ?? false,
+      available: grokStatus.installed && hasEnvValue('GROK_API_KEY'),
       version: grokStatus.version ?? null,
       installCommand: 'npm install -g @vibe-kit/grok-cli',
       docsUrl: 'https://github.com/superagent-ai/grok-cli',
       requiresApiKey: true,
       apiKeyEnvVar: 'GROK_API_KEY',
-      description: 'xAI Grok CLI with AI coding agent capabilities',
-      freeTier: false,
+      description: 'Optional legacy LLM fallback with xAI Grok.',
+      detail: grokStatus.installed
+        ? hasEnvValue('GROK_API_KEY')
+          ? 'Ready'
+          : 'Set GROK_API_KEY'
+        : 'Not installed',
     },
   ];
 }
 
 /**
- * Check if any WebSearch CLI is available
+ * Get all WebSearch providers with their current status.
  */
-export function hasAnyWebSearchCli(): boolean {
-  return hasGeminiCli() || hasGrokCli() || hasOpenCodeCli();
+export function getWebSearchCliProviders(): WebSearchCliInfo[] {
+  const wsConfig = getWebSearchConfig();
+  const providers: WebSearchCliInfo[] = [
+    {
+      id: 'exa',
+      kind: 'backend',
+      name: 'Exa',
+      enabled: wsConfig.providers?.exa?.enabled ?? false,
+      available:
+        (wsConfig.providers?.exa?.enabled ?? false) &&
+        hasAnyEnvValue(['EXA_API_KEY', 'CCS_WEBSEARCH_EXA_API_KEY']),
+      version: null,
+      docsUrl: 'https://docs.exa.ai/reference/search',
+      requiresApiKey: true,
+      apiKeyEnvVar: 'EXA_API_KEY',
+      description: 'API-backed search with strong relevance and content extraction.',
+      detail: hasAnyEnvValue(['EXA_API_KEY', 'CCS_WEBSEARCH_EXA_API_KEY'])
+        ? `API key detected (${wsConfig.providers?.exa?.max_results ?? 5} results)`
+        : 'Set EXA_API_KEY',
+    },
+    {
+      id: 'tavily',
+      kind: 'backend',
+      name: 'Tavily',
+      enabled: wsConfig.providers?.tavily?.enabled ?? false,
+      available:
+        (wsConfig.providers?.tavily?.enabled ?? false) &&
+        hasAnyEnvValue(['TAVILY_API_KEY', 'CCS_WEBSEARCH_TAVILY_API_KEY']),
+      version: null,
+      docsUrl: 'https://docs.tavily.com/documentation/api-reference/endpoint/search',
+      requiresApiKey: true,
+      apiKeyEnvVar: 'TAVILY_API_KEY',
+      description: 'Search API optimized for agent workflows and concise web result synthesis.',
+      detail: hasAnyEnvValue(['TAVILY_API_KEY', 'CCS_WEBSEARCH_TAVILY_API_KEY'])
+        ? `API key detected (${wsConfig.providers?.tavily?.max_results ?? 5} results)`
+        : 'Set TAVILY_API_KEY',
+    },
+    {
+      id: 'duckduckgo',
+      kind: 'backend',
+      name: 'DuckDuckGo',
+      enabled: wsConfig.providers?.duckduckgo?.enabled ?? true,
+      available: wsConfig.providers?.duckduckgo?.enabled ?? true,
+      version: null,
+      docsUrl: 'https://duckduckgo.com',
+      requiresApiKey: false,
+      description: 'Default built-in HTML search backend. Zero setup.',
+      detail: `Built-in (${wsConfig.providers?.duckduckgo?.max_results ?? 5} results)`,
+    },
+    {
+      id: 'brave',
+      kind: 'backend',
+      name: 'Brave Search',
+      enabled: wsConfig.providers?.brave?.enabled ?? false,
+      available:
+        (wsConfig.providers?.brave?.enabled ?? false) &&
+        hasAnyEnvValue(['BRAVE_API_KEY', 'CCS_WEBSEARCH_BRAVE_API_KEY']),
+      version: null,
+      docsUrl: 'https://brave.com/search/api/',
+      requiresApiKey: true,
+      apiKeyEnvVar: 'BRAVE_API_KEY',
+      description: 'API-backed web search with cleaner result metadata.',
+      detail: hasAnyEnvValue(['BRAVE_API_KEY', 'CCS_WEBSEARCH_BRAVE_API_KEY'])
+        ? `API key detected (${wsConfig.providers?.brave?.max_results ?? 5} results)`
+        : 'Set BRAVE_API_KEY',
+    },
+  ];
+
+  return [...providers, ...getLegacyProviderStatuses()];
 }
 
 /**
- * Get install hints for CLI-only users when no WebSearch CLI is installed
- * Returns raw message strings (without indicator prefix) for display
+ * Check if any WebSearch provider is currently ready.
+ */
+export function hasAnyWebSearchCli(): boolean {
+  return getWebSearchCliProviders().some((provider) => provider.enabled && provider.available);
+}
+
+/**
+ * Get setup hints when no providers are ready.
  */
 export function getCliInstallHints(): string[] {
   if (hasAnyWebSearchCli()) {
@@ -79,95 +173,58 @@ export function getCliInstallHints(): string[] {
   }
 
   return [
-    'WebSearch: No CLI tools installed',
-    '    Gemini CLI (FREE): npm i -g @google/gemini-cli',
-    '    OpenCode (FREE):   curl -fsSL https://opencode.ai/install | bash',
-    '    Grok CLI (paid):   npm i -g @vibe-kit/grok-cli',
+    'WebSearch: no ready providers',
+    '    Enable DuckDuckGo in Settings > WebSearch for zero-setup search',
+    '    Or export EXA_API_KEY, TAVILY_API_KEY, or BRAVE_API_KEY for API-backed search',
+    '    Optional legacy fallback: npm i -g @google/gemini-cli',
   ];
 }
 
 /**
- * Get WebSearch readiness status for display
- *
- * Called on third-party profile startup to inform user.
- * Checks both installation AND authentication status for Gemini CLI.
+ * Get WebSearch readiness status for display.
  */
 export function getWebSearchReadiness(): WebSearchStatus {
   const wsConfig = getWebSearchConfig();
+  const providers = getWebSearchCliProviders();
 
-  // Check if WebSearch is disabled entirely
   if (!wsConfig.enabled) {
     return {
       readiness: 'unavailable',
-      geminiCli: false,
-      geminiAuthenticated: false,
-      grokCli: false,
-      opencodeCli: false,
       message: 'Disabled in config',
+      providers,
     };
   }
 
-  // Check all CLIs
-  const geminiInstalled = hasGeminiCli();
-  const geminiAuthed = geminiInstalled && isGeminiAuthenticated();
-  const grokInstalled = hasGrokCli();
-  const opencodeInstalled = hasOpenCodeCli();
+  const enabledProviders = providers.filter((provider) => provider.enabled);
+  const readyProviders = enabledProviders.filter((provider) => provider.available);
 
-  // Build message based on installed + authenticated CLIs
-  const readyClis: string[] = [];
-  const needsAuthClis: string[] = [];
-
-  // Gemini requires auth check
-  if (geminiInstalled) {
-    if (geminiAuthed) {
-      readyClis.push('Gemini');
-    } else {
-      needsAuthClis.push('Gemini');
-    }
-  }
-
-  // Other CLIs don't require auth check (for now)
-  if (grokInstalled) readyClis.push('Grok');
-  if (opencodeInstalled) readyClis.push('OpenCode');
-
-  // Determine overall status
-  if (readyClis.length > 0) {
+  if (readyProviders.length > 0) {
     return {
       readiness: 'ready',
-      geminiCli: geminiInstalled,
-      geminiAuthenticated: geminiAuthed,
-      grokCli: grokInstalled,
-      opencodeCli: opencodeInstalled,
-      message: `Ready (${readyClis.join(' + ')})`,
+      message: `Ready (${readyProviders.map((provider) => provider.name).join(' + ')})`,
+      providers,
     };
   }
 
-  if (needsAuthClis.length > 0) {
+  if (enabledProviders.length > 0) {
     return {
-      readiness: 'needs_auth',
-      geminiCli: geminiInstalled,
-      geminiAuthenticated: false,
-      grokCli: grokInstalled,
-      opencodeCli: opencodeInstalled,
-      message: `Gemini: run 'gemini' to login`,
+      readiness: 'needs_setup',
+      message: enabledProviders
+        .map((provider) => `${provider.name}: ${provider.detail}`)
+        .join(' | '),
+      providers,
     };
   }
 
   return {
     readiness: 'unavailable',
-    geminiCli: false,
-    geminiAuthenticated: false,
-    grokCli: false,
-    opencodeCli: false,
-    message: 'Install: npm i -g @google/gemini-cli',
+    message: 'Enable at least one provider in Settings > WebSearch',
+    providers,
   };
 }
 
 /**
- * Display WebSearch status (single line, equilibrium UX)
- *
- * Only call for third-party profiles.
- * Shows detailed install hints when no CLI is installed.
+ * Display WebSearch status (single line, equilibrium UX).
  */
 export function displayWebSearchStatus(): void {
   const status = getWebSearchReadiness();
@@ -176,21 +233,13 @@ export function displayWebSearchStatus(): void {
     case 'ready':
       console.error(ok(`WebSearch: ${status.message}`));
       break;
-    case 'needs_auth':
+    case 'needs_setup':
       console.error(warn(`WebSearch: ${status.message}`));
       break;
     case 'unavailable':
       console.error(fail(`WebSearch: ${status.message}`));
-      const hints = getCliInstallHints();
-      if (hints.length > 0) {
-        // First line gets [i] prefix, rest are continuation (indented, no prefix)
-        for (let i = 0; i < hints.length; i++) {
-          if (i === 0) {
-            console.error(info(hints[i]));
-          } else {
-            console.error(hints[i]);
-          }
-        }
+      for (const [index, hint] of getCliInstallHints().entries()) {
+        console.error(index === 0 ? info(hint) : hint);
       }
       break;
   }

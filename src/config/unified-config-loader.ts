@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import * as yaml from 'js-yaml';
 import { getCcsDir } from '../utils/config-manager';
 import {
@@ -64,62 +65,70 @@ function getLockFilePath(): string {
 
 /**
  * Acquire lockfile for config write operations.
- * Returns true if lock acquired, false if already locked by another process.
+ * Returns a lock token if acquired, null if already locked by another process.
  * Cleans up stale locks (older than LOCK_STALE_MS).
  */
 
-function acquireLock(): boolean {
+function acquireLock(): string | null {
   const lockPath = getLockFilePath();
-  const lockData = `${process.pid}\n${Date.now()}`;
+  const lockToken = crypto.randomUUID();
+  const lockData = `${process.pid}\n${Date.now()}\n${lockToken}`;
 
   try {
     // Check if lock exists
     if (fs.existsSync(lockPath)) {
       const content = fs.readFileSync(lockPath, 'utf8');
       const [pidStr, timestampStr] = content.trim().split('\n');
-      const timestamp = parseInt(timestampStr, 10);
+      const pid = Number.parseInt(pidStr, 10);
+      const timestamp = Number.parseInt(timestampStr, 10);
+      const hasLiveOwner = Number.isInteger(pid) && pid > 0 && processExists(pid);
+      const isStale = !Number.isFinite(timestamp) || Date.now() - timestamp > LOCK_STALE_MS;
 
-      // Check if lock is stale
-      if (Date.now() - timestamp > LOCK_STALE_MS) {
-        // Stale lock - remove and acquire
+      if (hasLiveOwner) {
+        return null;
+      }
+
+      if (isStale || !hasLiveOwner) {
         fs.unlinkSync(lockPath);
-      } else {
-        // Check if process still exists
-        try {
-          process.kill(parseInt(pidStr, 10), 0); // Signal 0 checks if process exists
-          // Process exists - lock is valid
-          return false;
-        } catch {
-          // Process doesn't exist - remove stale lock
-          fs.unlinkSync(lockPath);
-        }
       }
     }
 
     // Acquire lock
     fs.writeFileSync(lockPath, lockData, { flag: 'wx', mode: 0o600 });
-    return true;
+    return lockToken;
   } catch (error) {
     // EEXIST means another process acquired the lock between our check and write
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      return false;
+      return null;
     }
-    return false;
+    return null;
   }
 }
 
 /**
  * Release lockfile after config write operation.
  */
-
-function releaseLock(): void {
+function releaseLock(lockToken: string): void {
   const lockPath = getLockFilePath();
   try {
     if (fs.existsSync(lockPath)) {
-      fs.unlinkSync(lockPath);
+      const content = fs.readFileSync(lockPath, 'utf8');
+      const fileToken = content.trim().split('\n')[2];
+      if (fileToken === lockToken) {
+        fs.unlinkSync(lockPath);
+      }
     }
   } catch {
     // Ignore cleanup errors
+  }
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -152,7 +161,7 @@ export function getConfigFormat(): 'yaml' | 'json' | 'none' {
 
 /**
  * Load unified config from YAML file.
- * Returns null if file doesn't exist or format check fails.
+ * Returns null if file doesn't exist.
  * Auto-upgrades config if version is outdated (regenerates comments).
  */
 export function loadUnifiedConfig(): UnifiedConfig | null {
@@ -168,8 +177,7 @@ export function loadUnifiedConfig(): UnifiedConfig | null {
     const parsed = yaml.load(content);
 
     if (!isUnifiedConfig(parsed)) {
-      console.error(`[!] Invalid config format in ${yamlPath}`);
-      return null;
+      throw new Error(`Invalid config format in ${yamlPath}`);
     }
 
     // Auto-upgrade if version is outdated (regenerates YAML with new comments and fields)
@@ -208,7 +216,7 @@ export function loadUnifiedConfig(): UnifiedConfig | null {
       const error = err instanceof Error ? err.message : 'Unknown error';
       console.error(`[X] Failed to load config: ${error}`);
     }
-    return null;
+    throw err;
   }
 }
 
@@ -329,11 +337,27 @@ function mergeWithDefaults(partial: Partial<UnifiedConfig>): UnifiedConfig {
     websearch: {
       enabled: partial.websearch?.enabled ?? defaults.websearch?.enabled ?? true,
       providers: {
+        exa: {
+          enabled: partial.websearch?.providers?.exa?.enabled ?? false,
+          max_results: partial.websearch?.providers?.exa?.max_results ?? 5,
+        },
+        tavily: {
+          enabled: partial.websearch?.providers?.tavily?.enabled ?? false,
+          max_results: partial.websearch?.providers?.tavily?.max_results ?? 5,
+        },
+        duckduckgo: {
+          enabled: partial.websearch?.providers?.duckduckgo?.enabled ?? true,
+          max_results: partial.websearch?.providers?.duckduckgo?.max_results ?? 5,
+        },
+        brave: {
+          enabled: partial.websearch?.providers?.brave?.enabled ?? false,
+          max_results: partial.websearch?.providers?.brave?.max_results ?? 5,
+        },
         gemini: {
           enabled:
             partial.websearch?.providers?.gemini?.enabled ??
             partial.websearch?.gemini?.enabled ?? // Legacy fallback
-            true,
+            false,
           model: partial.websearch?.providers?.gemini?.model ?? 'gemini-2.5-flash',
           timeout:
             partial.websearch?.providers?.gemini?.timeout ??
@@ -610,25 +634,25 @@ function generateYamlWithComments(config: UnifiedConfig): string {
   // WebSearch section
   if (config.websearch) {
     lines.push('# ----------------------------------------------------------------------------');
-    lines.push('# WebSearch: CLI-based web search for third-party profiles');
+    lines.push('# WebSearch: real search backends for third-party profiles');
     lines.push('# Dashboard (`ccs config`) is the source of truth for provider selection.');
     lines.push('#');
     lines.push('# Third-party providers (gemini, codex, agy, etc.) do not have access to');
-    lines.push("# Anthropic's WebSearch tool. These CLI tools provide fallback web search.");
-    lines.push('#');
-    lines.push('# Fallback chain: Gemini -> OpenCode -> Grok (tries in order until success)');
+    lines.push("# Anthropic's WebSearch tool. CCS intercepts that tool and runs local search.");
     lines.push('#');
     lines.push(
-      '# Gemini models: gemini-2.5-flash (default), gemini-2.5-pro, gemini-2.5-flash-lite'
-    );
-    lines.push(
-      '# OpenCode models: opencode/grok-code (default), opencode/gpt-4o, opencode/claude-3.5-sonnet'
+      '# Priority: Exa -> Tavily -> Brave -> DuckDuckGo -> optional legacy AI CLI fallbacks'
     );
     lines.push('#');
-    lines.push('# Install commands:');
-    lines.push('#   gemini: npm i -g @google/gemini-cli (FREE - 1000 req/day)');
-    lines.push('#   opencode: curl -fsSL https://opencode.ai/install | bash (FREE via Zen)');
-    lines.push('#   grok: npm i -g @vibe-kit/grok-cli (requires GROK_API_KEY)');
+    lines.push('# Exa requires EXA_API_KEY in your environment.');
+    lines.push('# Tavily requires TAVILY_API_KEY in your environment.');
+    lines.push('# Brave requires BRAVE_API_KEY in your environment.');
+    lines.push('# DuckDuckGo works with zero extra setup and is enabled by default.');
+    lines.push('#');
+    lines.push('# Legacy LLM fallbacks remain optional if you still want them:');
+    lines.push('#   gemini: npm i -g @google/gemini-cli');
+    lines.push('#   opencode: curl -fsSL https://opencode.ai/install | bash');
+    lines.push('#   grok: npm i -g @vibe-kit/grok-cli');
     lines.push('# ----------------------------------------------------------------------------');
     lines.push(
       yaml
@@ -808,16 +832,17 @@ function withConfigWriteLock<T>(callback: () => T): T {
   // Acquire lock (retry for up to 1 second)
   const maxRetries = 10;
   const retryDelayMs = 100;
-  let lockAcquired = false;
+  let lockToken: string | null = null;
   for (let i = 0; i < maxRetries; i++) {
-    if (acquireLock()) {
-      lockAcquired = true;
+    const acquiredToken = acquireLock();
+    if (acquiredToken) {
+      lockToken = acquiredToken;
       break;
     }
     sleepSync(retryDelayMs);
   }
 
-  if (!lockAcquired) {
+  if (!lockToken) {
     throw new Error('Config file is locked by another process. Wait a moment and try again.');
   }
 
@@ -825,7 +850,7 @@ function withConfigWriteLock<T>(callback: () => T): T {
     return callback();
   } finally {
     // Always release lock
-    releaseLock();
+    releaseLock(lockToken);
   }
 }
 
@@ -969,6 +994,10 @@ export interface GeminiWebSearchInfo {
 export function getWebSearchConfig(): {
   enabled: boolean;
   providers?: {
+    exa?: { enabled?: boolean; max_results?: number };
+    tavily?: { enabled?: boolean; max_results?: number };
+    duckduckgo?: { enabled?: boolean; max_results?: number };
+    brave?: { enabled?: boolean; max_results?: number };
     gemini?: GeminiWebSearchInfo;
     opencode?: { enabled?: boolean; model?: string; timeout?: number };
     grok?: { enabled?: boolean; timeout?: number };
@@ -979,9 +1008,29 @@ export function getWebSearchConfig(): {
   const config = loadOrCreateUnifiedConfig();
 
   // Build provider configs
+  const exaConfig = {
+    enabled: config.websearch?.providers?.exa?.enabled ?? false,
+    max_results: config.websearch?.providers?.exa?.max_results ?? 5,
+  };
+
+  const tavilyConfig = {
+    enabled: config.websearch?.providers?.tavily?.enabled ?? false,
+    max_results: config.websearch?.providers?.tavily?.max_results ?? 5,
+  };
+
+  const duckDuckGoConfig = {
+    enabled: config.websearch?.providers?.duckduckgo?.enabled ?? true,
+    max_results: config.websearch?.providers?.duckduckgo?.max_results ?? 5,
+  };
+
+  const braveConfig = {
+    enabled: config.websearch?.providers?.brave?.enabled ?? false,
+    max_results: config.websearch?.providers?.brave?.max_results ?? 5,
+  };
+
   const geminiConfig: GeminiWebSearchInfo = {
     enabled:
-      config.websearch?.providers?.gemini?.enabled ?? config.websearch?.gemini?.enabled ?? true,
+      config.websearch?.providers?.gemini?.enabled ?? config.websearch?.gemini?.enabled ?? false,
     model: config.websearch?.providers?.gemini?.model ?? 'gemini-2.5-flash',
     timeout:
       config.websearch?.providers?.gemini?.timeout ?? config.websearch?.gemini?.timeout ?? 55,
@@ -999,12 +1048,23 @@ export function getWebSearchConfig(): {
   };
 
   // Auto-enable master switch if ANY provider is enabled
-  const anyProviderEnabled = geminiConfig.enabled || opencodeConfig.enabled || grokConfig.enabled;
+  const anyProviderEnabled =
+    exaConfig.enabled ||
+    tavilyConfig.enabled ||
+    duckDuckGoConfig.enabled ||
+    braveConfig.enabled ||
+    geminiConfig.enabled ||
+    opencodeConfig.enabled ||
+    grokConfig.enabled;
   const enabled = anyProviderEnabled && (config.websearch?.enabled ?? true);
 
   return {
     enabled,
     providers: {
+      exa: exaConfig,
+      tavily: tavilyConfig,
+      duckduckgo: duckDuckGoConfig,
+      brave: braveConfig,
       gemini: geminiConfig,
       opencode: opencodeConfig,
       grok: grokConfig,

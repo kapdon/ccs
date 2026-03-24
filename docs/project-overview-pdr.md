@@ -35,7 +35,7 @@ CCS provides:
 3. **AI Providers**: Dedicated CLIProxy dashboard for Gemini, Codex, Claude, Vertex, and OpenAI-compatible API-key families
 4. **API Profiles**: GLM, Kimi, OpenRouter, any Anthropic-compatible API
 5. **Visual Dashboard**: React SPA for configuration management
-6. **Automatic WebSearch**: MCP fallback for third-party providers
+6. **Automatic WebSearch**: Real backend fallback chain for third-party providers
 7. **Usage Analytics**: Token tracking, cost analysis, model breakdown
 
 ---
@@ -92,8 +92,9 @@ CCS provides:
 - Validate symlinks and permissions
 
 ### FR-007: WebSearch Fallback
-- Auto-configure MCP web search for third-party profiles
-- Support Gemini CLI, OpenCode, Grok providers
+- Intercept WebSearch for third-party profiles that cannot reach Anthropic's native tool
+- Support Exa, Tavily, Brave, and DuckDuckGo real search backends
+- Keep Gemini CLI, OpenCode, and Grok as optional legacy fallback
 - Graceful fallback chain
 
 ### FR-008: Remote CLIProxy Support
@@ -169,8 +170,8 @@ CCS provides:
 
 ### TR-002: Optional Dependencies
 - CLIProxyAPI binary (auto-managed)
-- Gemini CLI for WebSearch
-- Additional MCP servers
+- Exa/Tavily/Brave API keys for higher-quality WebSearch
+- Gemini CLI for legacy WebSearch fallback
 
 ### TR-003: Configuration
 - YAML-based config (`~/.ccs/config.yaml`)

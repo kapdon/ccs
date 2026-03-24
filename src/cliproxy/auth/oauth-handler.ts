@@ -20,6 +20,8 @@ import {
   getProviderAccounts,
   getDefaultAccount,
   touchAccount,
+  hasAccountNameConflict,
+  findAccountNameMatch,
   PROVIDERS_WITHOUT_EMAIL,
   validateNickname,
 } from '../account-manager';
@@ -86,6 +88,28 @@ export async function requestPasteCallbackStart(
   }
 
   return (await response.json()) as PasteCallbackStartData;
+}
+
+export function getCliAuthNicknameError(
+  provider: CLIProxyProvider,
+  nickname: string | undefined,
+  existingAccounts: Array<Pick<AccountInfo, 'id' | 'nickname'>>,
+  allowExistingAccountId?: string
+): string | null {
+  if (!nickname || !PROVIDERS_WITHOUT_EMAIL.includes(provider)) {
+    return null;
+  }
+
+  const validationError = validateNickname(nickname);
+  if (validationError) {
+    return validationError;
+  }
+
+  if (hasAccountNameConflict(existingAccounts, nickname, allowExistingAccountId)) {
+    return `Nickname "${nickname}" is already in use. Choose a different one.`;
+  }
+
+  return null;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -207,74 +231,6 @@ async function promptOAuthModeChoice(callbackPort: number | null): Promise<'past
 }
 
 /**
- * Prompt user for account nickname (required for kiro/ghcp)
- * Returns null if user cancels
- */
-async function promptNickname(
-  provider: CLIProxyProvider,
-  existingAccounts: AccountInfo[]
-): Promise<string | null> {
-  const readline = await import('readline');
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  const existingNicknames = existingAccounts.map(
-    (a) => a.nickname?.toLowerCase() || a.id.toLowerCase()
-  );
-
-  console.log('');
-  console.log(info(`${provider} accounts require a unique nickname to distinguish them.`));
-  if (existingNicknames.length > 0) {
-    console.log(`    Existing: ${existingNicknames.join(', ')}`);
-  }
-
-  return new Promise<string | null>((resolve) => {
-    let resolved = false;
-
-    // Handle Ctrl+C gracefully (only if not already resolved)
-    rl.on('close', () => {
-      if (!resolved) {
-        resolved = true;
-        resolve(null);
-      }
-    });
-
-    const askForNickname = () => {
-      rl.question('[?] Enter a nickname for this account: ', (answer) => {
-        const nickname = answer.trim();
-
-        if (!nickname) {
-          console.log(fail('Nickname cannot be empty'));
-          askForNickname();
-          return;
-        }
-
-        const validationError = validateNickname(nickname);
-        if (validationError) {
-          console.log(fail(validationError));
-          askForNickname();
-          return;
-        }
-
-        if (existingNicknames.includes(nickname.toLowerCase())) {
-          console.log(fail(`Nickname "${nickname}" is already in use. Choose a different one.`));
-          askForNickname();
-          return;
-        }
-
-        resolved = true;
-        rl.close();
-        resolve(nickname);
-      });
-    };
-
-    askForNickname();
-  });
-}
-
-/**
  * Run pre-flight OAuth checks
  */
 async function runPreflightChecks(
@@ -350,7 +306,8 @@ async function handlePasteCallbackMode(
   oauthConfig: ProviderOAuthConfig,
   verbose: boolean,
   tokenDir: string,
-  nickname?: string
+  nickname?: string,
+  expectedAccountId?: string
 ): Promise<AccountInfo | null> {
   // Resolve CLIProxyAPI target (local or remote based on config)
   const target = getProxyTarget();
@@ -474,7 +431,13 @@ async function handlePasteCallbackMode(
     }
 
     console.log(ok('Authentication successful!'));
-    const account = registerAccountFromToken(provider, tokenDir, nickname);
+    const account = registerAccountFromToken(
+      provider,
+      tokenDir,
+      nickname,
+      verbose,
+      expectedAccountId
+    );
 
     // Account safety: check for cross-provider conflicts
     if (account?.email) {
@@ -509,7 +472,7 @@ export async function triggerOAuth(
   warnOAuthBanRisk(provider);
   const { verbose = false, add = false, fromUI = false, noIncognito = true } = options;
   const acceptAgyRisk = options.acceptAgyRisk === true;
-  let { nickname } = options;
+  const { nickname } = options;
   const resolvedKiroMethod =
     provider === 'kiro' ? normalizeKiroAuthMethod(options.kiroMethod) : DEFAULT_KIRO_AUTH_METHOD;
 
@@ -533,21 +496,26 @@ export async function triggerOAuth(
 
   // Check for existing accounts
   const existingAccounts = getProviderAccounts(provider);
+  const existingNameMatch = nickname ? findAccountNameMatch(existingAccounts, nickname) : null;
+  const nicknameError = !fromUI
+    ? getCliAuthNicknameError(provider, nickname, existingAccounts, existingNameMatch?.id)
+    : null;
+  if (nicknameError) {
+    console.log(fail(nicknameError));
+    return null;
+  }
 
   // Handle paste-callback mode
   if (options.pasteCallback) {
     const tokenDir = getProviderTokenDir(provider);
-    return handlePasteCallbackMode(provider, oauthConfig, verbose, tokenDir, nickname);
-  }
-
-  // For kiro/ghcp: require nickname if not provided (CLI only, not fromUI)
-  if (PROVIDERS_WITHOUT_EMAIL.includes(provider) && !nickname && !fromUI) {
-    const promptedNickname = await promptNickname(provider, existingAccounts);
-    if (!promptedNickname) {
-      console.log(info('Cancelled'));
-      return null;
-    }
-    nickname = promptedNickname;
+    return handlePasteCallbackMode(
+      provider,
+      oauthConfig,
+      verbose,
+      tokenDir,
+      nickname,
+      existingNameMatch?.id
+    );
   }
 
   // Handle --import flag: skip OAuth and import from Kiro IDE directly
@@ -555,7 +523,7 @@ export async function triggerOAuth(
     const tokenDir = getProviderTokenDir(provider);
     const success = await importKiroToken(verbose);
     if (success) {
-      return registerAccountFromToken(provider, tokenDir, nickname);
+      return registerAccountFromToken(provider, tokenDir, nickname, verbose, existingNameMatch?.id);
     }
     return null;
   }
@@ -589,12 +557,26 @@ export async function triggerOAuth(
     // Non-interactive environment (piped input) - default to paste mode
     if (!process.stdin.isTTY) {
       const tokenDir = getProviderTokenDir(provider);
-      return handlePasteCallbackMode(provider, oauthConfig, verbose, tokenDir, nickname);
+      return handlePasteCallbackMode(
+        provider,
+        oauthConfig,
+        verbose,
+        tokenDir,
+        nickname,
+        existingNameMatch?.id
+      );
     }
     const mode = await promptOAuthModeChoice(callbackPort);
     if (mode === 'paste') {
       const tokenDir = getProviderTokenDir(provider);
-      return handlePasteCallbackMode(provider, oauthConfig, verbose, tokenDir, nickname);
+      return handlePasteCallbackMode(
+        provider,
+        oauthConfig,
+        verbose,
+        tokenDir,
+        nickname,
+        existingNameMatch?.id
+      );
     }
     // mode === 'forward' continues to existing port-forwarding flow below
   }
@@ -678,6 +660,7 @@ export async function triggerOAuth(
     verbose,
     isCLI,
     nickname,
+    expectedAccountId: existingNameMatch?.id,
   });
 
   // Show hint for Kiro users about --no-incognito option (first-time auth only)

@@ -233,15 +233,6 @@ export function getDeviceCodeProviderInstruction(provider: unknown): string {
   return 'Complete the authorization in your browser.';
 }
 
-/** Providers that require nickname because token payload may not include email. */
-export const NICKNAME_REQUIRED_PROVIDERS: CLIProxyProvider[] = ['ghcp', 'kiro'];
-
-/** Check if provider requires user-supplied nickname in auth flow */
-export function isNicknameRequiredProvider(provider: unknown): boolean {
-  const normalized = normalizeProviderInput(provider);
-  return isValidProvider(normalized) && NICKNAME_REQUIRED_PROVIDERS.includes(normalized);
-}
-
 /** Kiro auth methods exposed in CCS UI (aligned with CLIProxyAPIPlus support). */
 export const KIRO_AUTH_METHODS = ['aws', 'aws-authcode', 'google', 'github'] as const;
 export type KiroAuthMethod = (typeof KIRO_AUTH_METHODS)[number];

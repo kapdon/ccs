@@ -50,6 +50,7 @@ export interface OAuthProcessOptions {
   verbose: boolean;
   isCLI: boolean;
   nickname?: string;
+  expectedAccountId?: string;
 }
 
 /** Internal state for OAuth process */
@@ -276,6 +277,7 @@ async function handleTokenNotFound(
   callbackPort: number | null,
   tokenDir: string,
   nickname: string | undefined,
+  expectedAccountId: string | undefined,
   verbose: boolean,
   failureReason?: string
 ): Promise<AccountInfo | null> {
@@ -289,7 +291,7 @@ async function handleTokenNotFound(
     if (result.success) {
       const providerInfo = result.provider ? ` (Provider: ${result.provider})` : '';
       console.log(ok(`Imported Kiro token from IDE${providerInfo}`));
-      return registerAccountFromToken(provider, tokenDir, nickname);
+      return registerAccountFromToken(provider, tokenDir, nickname, verbose, expectedAccountId);
     }
 
     console.log(fail(`Auto-import failed: ${result.error}`));
@@ -376,6 +378,7 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
     headless,
     verbose,
     nickname,
+    expectedAccountId,
   } = options;
 
   const log = (msg: string) => {
@@ -538,7 +541,9 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
             deviceCodeEvents.emit('deviceCode:completed', state.sessionId);
           }
 
-          resolve(registerAccountFromToken(provider, tokenDir, nickname));
+          resolve(
+            registerAccountFromToken(provider, tokenDir, nickname, verbose, expectedAccountId)
+          );
         } else {
           const failureReason = extractLikelyAuthFailureFromStderr(provider, state.stderrData);
 
@@ -556,6 +561,7 @@ export function executeOAuthProcess(options: OAuthProcessOptions): Promise<Accou
             callbackPort,
             tokenDir,
             nickname,
+            expectedAccountId,
             verbose,
             failureReason || undefined
           );

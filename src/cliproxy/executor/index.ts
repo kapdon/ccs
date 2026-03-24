@@ -418,7 +418,7 @@ export async function execClaudeWithCLIProxy(
         const nickname = acct.nickname ? `[${acct.nickname}]` : '';
         console.log(`  ${nickname.padEnd(12)} ${acct.email || acct.id}${defaultMark}`);
       }
-      console.log(`\n  Use "ccs ${provider} --use <nickname>" to switch accounts`);
+      console.log(`\n  Use "ccs ${provider} --use <nickname-or-id>" to switch accounts`);
     }
     process.exit(0);
   }

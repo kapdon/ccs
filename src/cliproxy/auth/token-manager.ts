@@ -11,6 +11,7 @@ import { CLIProxyProvider } from '../types';
 import { CLIPROXY_PROFILES } from '../../auth/profile-detector';
 import { getProviderAuthDir } from '../config-generator';
 import { getProviderAccounts, getDefaultAccount } from '../account-manager';
+import { deleteTokenFile, extractAccountIdFromTokenFile } from '../accounts/token-file-ops';
 import {
   AuthStatus,
   PROVIDER_AUTH_PREFIXES,
@@ -202,50 +203,98 @@ export function registerAccountFromToken(
   provider: CLIProxyProvider,
   tokenDir: string,
   nickname?: string,
-  verbose = false
+  verbose = false,
+  expectedAccountId?: string
 ): import('../account-manager').AccountInfo | null {
-  const { registerAccount, generateNickname } = require('../account-manager');
+  type TokenCandidate = {
+    file: string;
+    filePath: string;
+    email?: string;
+    projectId?: string;
+    accountId: string;
+    mtimeMs: number;
+    alreadyRegistered: boolean;
+  };
+
+  const { registerAccount } = require('../account-manager');
+  let selectedCandidate: Omit<TokenCandidate, 'mtimeMs'> | null = null;
   try {
     const files = fs.readdirSync(tokenDir);
     const jsonFiles = files.filter((f: string) => f.endsWith('.json'));
+    const existingAccounts = getProviderAccounts(provider);
+    const candidates: TokenCandidate[] = jsonFiles
+      .map((file): TokenCandidate | null => {
+        const filePath = path.join(tokenDir, file);
+        if (!isTokenFileForProvider(filePath, provider)) return null;
 
-    let newestFile: string | null = null;
-    let newestMtime = 0;
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const data = JSON.parse(content) as { email?: string; project_id?: string };
+        const email = data.email || undefined;
+        const projectId = data.project_id || undefined;
+        const accountId = extractAccountIdFromTokenFile(file, email);
+        const stats = fs.statSync(filePath);
+        return {
+          file,
+          filePath,
+          email,
+          projectId,
+          accountId,
+          mtimeMs: stats.mtimeMs,
+          alreadyRegistered: existingAccounts.some((account) => account.tokenFile === file),
+        };
+      })
+      .filter((candidate): candidate is TokenCandidate => candidate !== null)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-    for (const file of jsonFiles) {
-      const filePath = path.join(tokenDir, file);
-      if (!isTokenFileForProvider(filePath, provider)) continue;
-
-      const stats = fs.statSync(filePath);
-      if (stats.mtimeMs > newestMtime) {
-        newestMtime = stats.mtimeMs;
-        newestFile = file;
-      }
+    if (expectedAccountId) {
+      selectedCandidate =
+        candidates.find((candidate) => candidate.accountId === expectedAccountId) ||
+        candidates.find((candidate) => {
+          const existingAccount = existingAccounts.find(
+            (account) => account.id === expectedAccountId
+          );
+          return !!existingAccount && existingAccount.tokenFile === candidate.file;
+        }) ||
+        null;
+    } else {
+      selectedCandidate = candidates[0] || null;
     }
 
-    if (!newestFile) {
+    if (!selectedCandidate) {
+      if (verbose && expectedAccountId) {
+        console.error(
+          `[auth] No token matched the expected account ${expectedAccountId}; refusing ambiguous registration`
+        );
+      }
       return null;
     }
 
-    const tokenPath = path.join(tokenDir, newestFile);
-    const content = fs.readFileSync(tokenPath, 'utf-8');
-    const data = JSON.parse(content);
-    const email = data.email || undefined;
-    const projectId = data.project_id || undefined;
-
     const account = registerAccount(
       provider,
-      newestFile,
-      email,
-      nickname || generateNickname(email),
-      projectId
+      selectedCandidate.file,
+      selectedCandidate.email,
+      nickname,
+      selectedCandidate.projectId
     );
 
-    // Upload token to remote server if configured (async, don't block)
-    uploadTokenToRemoteAsync(tokenPath, verbose);
-
+    uploadTokenToRemoteAsync(selectedCandidate.filePath, verbose);
     return account;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (verbose) {
+      console.error(`[auth] Failed to register token-backed account: ${message}`);
+    }
+
+    if (selectedCandidate && !selectedCandidate.alreadyRegistered && !expectedAccountId) {
+      deleteTokenFile(selectedCandidate.file);
+    }
+
+    if (expectedAccountId && verbose) {
+      console.error(
+        `[auth] Reauthentication target ${expectedAccountId} did not resolve cleanly from the new token`
+      );
+    }
+
     return null;
   }
 }

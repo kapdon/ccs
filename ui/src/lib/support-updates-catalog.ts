@@ -68,7 +68,7 @@ export const SUPPORT_NOTICES: SupportNotice[] = [
     highlights: [
       'Set default target to Droid when creating or editing API Profiles.',
       'Set default target to Droid for CLIProxy variants, including Codex and Antigravity flows.',
-      'Use ccsd alias or --target droid for one-off target overrides.',
+      'Use ccs-droid as the explicit alias, with ccsd kept as the legacy shortcut.',
     ],
     actions: [
       {
@@ -88,11 +88,11 @@ export const SUPPORT_NOTICES: SupportNotice[] = [
         path: '/cliproxy',
       },
       {
-        id: 'copy-ccsd-command',
-        label: 'Run once with Droid alias',
-        description: 'Use ccsd to force Droid target with your current profile.',
+        id: 'copy-ccs-droid-command',
+        label: 'Run once with explicit Droid alias',
+        description: 'Use ccs-droid to force the Droid target with your current profile.',
         type: 'command',
-        command: 'ccsd glm',
+        command: 'ccs-droid glm',
       },
       {
         id: 'copy-target-override',
@@ -107,7 +107,7 @@ export const SUPPORT_NOTICES: SupportNotice[] = [
       { label: 'CLIProxy', path: '/cliproxy' },
     ],
     commands: [
-      'ccsd glm',
+      'ccs-droid glm',
       'ccs codex --target droid "your prompt"',
       'ccs cliproxy create mycodex --provider codex --target droid',
     ],
@@ -182,8 +182,8 @@ export const CLI_SUPPORT_ENTRIES: CliSupportEntry[] = [
       { label: 'API Profiles', path: '/providers' },
       { label: 'CLIProxy', path: '/cliproxy' },
     ],
-    commands: ['ccsd glm', 'ccs km --target droid', 'ccs codex --target droid'],
-    notes: 'Use ccsd alias for automatic Droid target selection.',
+    commands: ['ccs-droid glm', 'ccs km --target droid', 'ccs codex --target droid'],
+    notes: 'Use ccs-droid as the explicit runtime alias. Legacy ccsd still works.',
   },
   {
     id: 'codex-cliproxy',

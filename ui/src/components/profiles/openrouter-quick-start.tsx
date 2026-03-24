@@ -1,32 +1,92 @@
-/**
- * OpenRouter Quick Start Card
- * Prominent CTA for new users to create OpenRouter profile
- */
-
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { useOpenRouterReady } from '@/hooks/use-openrouter-models';
+import { cn } from '@/lib/utils';
 import {
-  Sparkles,
-  ExternalLink,
   ArrowRight,
-  Zap,
   CloudCog,
+  ExternalLink,
   KeyRound,
   SlidersHorizontal,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface OpenRouterQuickStartProps {
+  hasProfiles: boolean;
+  profileCount: number;
   onOpenRouterClick: () => void;
   onAlibabaCodingPlanClick: () => void;
   onCliproxyClick: () => void;
   onCustomClick: () => void;
 }
 
+interface QuickStartCardProps {
+  badge: string;
+  badgeClassName?: string;
+  className?: string;
+  title: string;
+  description: string;
+  visual: ReactNode;
+  highlights: Array<{ icon: ReactNode; label: string }>;
+  actionLabel: string;
+  actionClassName: string;
+  onAction: () => void;
+  footer?: ReactNode;
+}
+
+function QuickStartCard({
+  badge,
+  badgeClassName,
+  className,
+  title,
+  description,
+  visual,
+  highlights,
+  actionLabel,
+  actionClassName,
+  onAction,
+  footer,
+}: QuickStartCardProps) {
+  return (
+    <Card className={cn('flex h-full flex-col border shadow-sm', className)}>
+      <CardHeader className="space-y-3 pb-3">
+        <div className="flex items-center gap-3">
+          {visual}
+          <Badge variant="secondary" className={badgeClassName}>
+            {badge}
+          </Badge>
+        </div>
+        <div className="space-y-1.5">
+          <CardTitle className="text-base">{title}</CardTitle>
+          <CardDescription className="text-sm leading-6">{description}</CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent className="mt-auto flex flex-1 flex-col gap-4 pt-0">
+        <div className="space-y-2 text-xs text-muted-foreground">
+          {highlights.map((item) => (
+            <div key={item.label} className="flex items-center gap-2">
+              {item.icon}
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+        <Button onClick={onAction} className={actionClassName}>
+          {actionLabel}
+          <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+        {footer ? <div className="text-xs text-muted-foreground">{footer}</div> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function OpenRouterQuickStart({
+  hasProfiles,
+  profileCount,
   onOpenRouterClick,
   onAlibabaCodingPlanClick,
   onCliproxyClick,
@@ -34,185 +94,151 @@ export function OpenRouterQuickStart({
 }: OpenRouterQuickStartProps) {
   const { t } = useTranslation();
   const { modelCount, isLoading } = useOpenRouterReady();
+  const modelCountLabel = isLoading ? '300+' : `${modelCount}+`;
+  const profileSummaryLabel = hasProfiles
+    ? t('openrouterQuickStart.profileCount', { count: profileCount })
+    : t('openrouterQuickStart.recommended');
+  const summaryTitle = hasProfiles
+    ? t('openrouterQuickStart.selectProfileTitle')
+    : t('apiProfiles.noProfilesYet');
+  const summaryDescription = hasProfiles
+    ? t('openrouterQuickStart.summaryDescriptionWithProfiles', { count: profileCount })
+    : t('openrouterQuickStart.summaryDescriptionNoProfiles');
 
   return (
-    <div className="flex-1 flex items-center justify-center bg-muted/20 p-8">
-      <div className="max-w-lg w-full space-y-6">
-        {/* Main OpenRouter Card */}
-        <Card className="border-accent/30 dark:border-accent/40 bg-gradient-to-br from-accent/5 to-background dark:from-accent/10">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-lg bg-accent/10 dark:bg-accent/20">
-                <img src="/icons/openrouter.svg" alt="OpenRouter" className="w-6 h-6" />
+    <div className="flex h-full min-h-0 flex-col overflow-auto bg-muted/20 p-4 sm:p-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+        <Card className="border-dashed bg-background/90 shadow-sm">
+          <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">{profileSummaryLabel}</Badge>
+                <Badge variant="outline">
+                  {t('openrouterQuickStart.openrouterModelsBadge', { modelCountLabel })}
+                </Badge>
               </div>
-              <Badge
-                variant="secondary"
-                className="bg-accent/10 text-accent dark:bg-accent/20 dark:text-accent-foreground"
-              >
-                {t('openrouterQuickStart.recommended')}
-              </Badge>
-            </div>
-            <CardTitle className="text-xl">{t('openrouterQuickStart.title')}</CardTitle>
-            <CardDescription className="text-base">
-              {t('openrouterQuickStart.description', {
-                modelCountLabel: isLoading ? '300+' : `${modelCount}+`,
-              })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Key Features */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Zap className="w-4 h-4 text-accent" />
-                <span>{t('openrouterQuickStart.featureOneApi')}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Sparkles className="w-4 h-4 text-accent" />
-                <span>{t('openrouterQuickStart.featureTierMapping')}</span>
+              <div className="space-y-1">
+                <h2 className="text-xl font-semibold">{summaryTitle}</h2>
+                <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                  {summaryDescription}
+                </p>
               </div>
             </div>
-
-            <Button
-              onClick={onOpenRouterClick}
-              className="w-full bg-accent hover:bg-accent/90 text-white"
-              size="lg"
-            >
-              {t('openrouterQuickStart.createOpenRouterProfile')}
-              <ArrowRight className="w-4 h-4 ml-2" />
+            <Button variant="outline" onClick={onCustomClick} className="shrink-0">
+              {t('openrouterQuickStart.createCustomProfile')}
             </Button>
-
-            <p className="text-xs text-center text-muted-foreground">
-              {t('openrouterQuickStart.getApiKeyAt')}{' '}
-              <a
-                href="https://openrouter.ai/keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent hover:underline inline-flex items-center gap-1"
-              >
-                openrouter.ai/keys
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </p>
           </CardContent>
         </Card>
 
-        {/* Alibaba Coding Plan Card */}
-        <Card className="border-orange-500/30 dark:border-orange-500/40 bg-gradient-to-br from-orange-500/5 to-background dark:from-orange-500/10">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-lg bg-orange-500/10 dark:bg-orange-500/20">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <QuickStartCard
+            badge={t('openrouterQuickStart.recommended')}
+            title={t('openrouterQuickStart.title')}
+            description={t('openrouterQuickStart.description', { modelCountLabel })}
+            visual={
+              <div className="rounded-lg bg-accent/10 p-2">
+                <img src="/icons/openrouter.svg" alt="OpenRouter" className="h-5 w-5" />
+              </div>
+            }
+            highlights={[
+              {
+                icon: <Zap className="h-3.5 w-3.5 text-accent" />,
+                label: t('openrouterQuickStart.featureOneApi'),
+              },
+              {
+                icon: <Sparkles className="h-3.5 w-3.5 text-accent" />,
+                label: t('openrouterQuickStart.featureTierMapping'),
+              },
+            ]}
+            actionLabel={t('openrouterQuickStart.createOpenRouterProfile')}
+            actionClassName="w-full bg-accent text-white hover:bg-accent/90"
+            onAction={onOpenRouterClick}
+            footer={
+              <>
+                {t('openrouterQuickStart.getApiKeyAt')}{' '}
+                <a
+                  href="https://openrouter.ai/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-accent hover:underline"
+                >
+                  openrouter.ai/keys
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </>
+            }
+          />
+
+          <QuickStartCard
+            badge={t('openrouterQuickStart.runtimeProviderBadge')}
+            badgeClassName="bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200"
+            title={t('openrouterQuickStart.runtimeProviderTitle')}
+            description={t('openrouterQuickStart.runtimeProviderDescription')}
+            visual={
+              <div className="rounded-lg bg-emerald-500/10 p-2">
+                <SlidersHorizontal className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
+              </div>
+            }
+            highlights={[
+              {
+                icon: <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-600" />,
+                label: t('openrouterQuickStart.runtimeProviderFeatureConnectors'),
+              },
+              {
+                icon: <KeyRound className="h-3.5 w-3.5 text-emerald-600" />,
+                label: t('openrouterQuickStart.runtimeProviderFeatureSecrets'),
+              },
+            ]}
+            actionLabel={t('openrouterQuickStart.runtimeProviderTitle')}
+            actionClassName="w-full bg-emerald-600 text-white hover:bg-emerald-600/90"
+            onAction={onCliproxyClick}
+            footer={<span>{t('openrouterQuickStart.runtimeProviderFooter')}</span>}
+          />
+
+          <QuickStartCard
+            badge={t('alibabaCodingPlanQuickStart.recommended')}
+            badgeClassName="bg-orange-500/10 text-orange-700 dark:bg-orange-500/20 dark:text-orange-200"
+            className="lg:col-span-2"
+            title={t('alibabaCodingPlanQuickStart.title')}
+            description={t('alibabaCodingPlanQuickStart.description')}
+            visual={
+              <div className="rounded-lg bg-orange-500/10 p-2">
                 <img
                   src="/assets/providers/alibabacloud-color.svg"
                   alt="Alibaba Coding Plan"
-                  className="w-6 h-6"
+                  className="h-5 w-5"
                 />
               </div>
-              <Badge
-                variant="secondary"
-                className="bg-orange-500/10 text-orange-700 dark:bg-orange-500/20 dark:text-orange-200"
-              >
-                {t('alibabaCodingPlanQuickStart.recommended')}
-              </Badge>
-            </div>
-            <CardTitle className="text-xl">{t('alibabaCodingPlanQuickStart.title')}</CardTitle>
-            <CardDescription className="text-base">
-              {t('alibabaCodingPlanQuickStart.description')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <CloudCog className="w-4 h-4 text-orange-600" />
-                <span>{t('alibabaCodingPlanQuickStart.featureEndpoint')}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <KeyRound className="w-4 h-4 text-orange-600" />
-                <span>{t('alibabaCodingPlanQuickStart.featureKeyFormat')}</span>
-              </div>
-            </div>
-
-            <Button
-              onClick={onAlibabaCodingPlanClick}
-              className="w-full bg-orange-600 hover:bg-orange-600/90 text-white"
-              size="lg"
-            >
-              {t('alibabaCodingPlanQuickStart.createAlibabaProfile')}
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-
-            <p className="text-xs text-center text-muted-foreground">
-              {t('alibabaCodingPlanQuickStart.readGuideAt')}{' '}
-              <a
-                href="https://www.alibabacloud.com/help/en/model-studio/coding-plan"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-orange-700 dark:text-orange-400 hover:underline inline-flex items-center gap-1"
-              >
-                Alibaba Cloud Model Studio
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-emerald-500/30 dark:border-emerald-500/40 bg-gradient-to-br from-emerald-500/5 to-background dark:from-emerald-500/10">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/20">
-                <SlidersHorizontal className="w-6 h-6 text-emerald-700 dark:text-emerald-300" />
-              </div>
-              <Badge
-                variant="secondary"
-                className="bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200"
-              >
-                Configure in AI Providers
-              </Badge>
-            </div>
-            <CardTitle className="text-xl">Manage CLIProxy AI providers</CardTitle>
-            <CardDescription className="text-base">
-              Configure Gemini, Codex, Claude, Vertex, and OpenAI-compatible connectors directly in
-              the dedicated CLIProxy AI Providers page.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <SlidersHorizontal className="w-4 h-4 text-emerald-600" />
-                <span>Dedicated /cliproxy/ai-providers workspace</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <KeyRound className="w-4 h-4 text-emerald-600" />
-                <span>Manage provider secrets outside API Profiles</span>
-              </div>
-            </div>
-
-            <Button
-              onClick={onCliproxyClick}
-              className="w-full bg-emerald-600 hover:bg-emerald-600/90 text-white"
-              size="lg"
-            >
-              Open AI Providers
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-
-            <p className="text-xs text-center text-muted-foreground">
-              Keep runtime provider configuration in CLIProxy, then create API Profiles only when
-              you need standalone Anthropic-compatible endpoints.
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Divider */}
-        <div className="flex items-center gap-4">
-          <Separator className="flex-1" />
-          <span className="text-xs text-muted-foreground">{t('openrouterQuickStart.or')}</span>
-          <Separator className="flex-1" />
+            }
+            highlights={[
+              {
+                icon: <CloudCog className="h-3.5 w-3.5 text-orange-600" />,
+                label: t('alibabaCodingPlanQuickStart.featureEndpoint'),
+              },
+              {
+                icon: <KeyRound className="h-3.5 w-3.5 text-orange-600" />,
+                label: t('alibabaCodingPlanQuickStart.featureKeyFormat'),
+              },
+            ]}
+            actionLabel={t('alibabaCodingPlanQuickStart.createAlibabaProfile')}
+            actionClassName="w-full bg-orange-600 text-white hover:bg-orange-600/90"
+            onAction={onAlibabaCodingPlanClick}
+            footer={
+              <>
+                {t('alibabaCodingPlanQuickStart.readGuideAt')}{' '}
+                <a
+                  href="https://www.alibabacloud.com/help/en/model-studio/coding-plan"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-orange-700 hover:underline dark:text-orange-400"
+                >
+                  Alibaba Cloud Model Studio
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </>
+            }
+          />
         </div>
-
-        {/* Custom Option */}
-        <Button variant="outline" onClick={onCustomClick} className="w-full">
-          {t('openrouterQuickStart.createCustomProfile')}
-        </Button>
       </div>
     </div>
   );

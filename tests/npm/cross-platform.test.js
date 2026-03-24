@@ -129,6 +129,22 @@ describe('cross-platform', () => {
 
       assert(packageJson.bin, 'package.json should have bin field');
       assert(packageJson.bin.ccs, 'bin field should specify ccs command');
+      assert(packageJson.bin['ccs-droid'], 'bin field should specify ccs-droid command');
+      assert(packageJson.bin.ccsd, 'bin field should specify ccsd command');
+      assert.notStrictEqual(
+        packageJson.bin['ccs-droid'],
+        packageJson.bin.ccs,
+        'ccs-droid should use a dedicated runtime entrypoint'
+      );
+      assert.strictEqual(
+        packageJson.bin['ccs-droid'],
+        packageJson.bin.ccsd,
+        'legacy ccsd alias should share the dedicated droid runtime entrypoint'
+      );
+      assert(
+        fs.existsSync(path.join(__dirname, '..', '..', packageJson.bin['ccs-droid'])),
+        'dedicated droid runtime entrypoint should exist'
+      );
       assert(packageJson.scripts, 'package.json should have scripts field');
     });
   });

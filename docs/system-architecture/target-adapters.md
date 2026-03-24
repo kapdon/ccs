@@ -79,8 +79,9 @@ CCS resolves which adapter to use via priority-ordered checks:
         glm:
           target: droid
 
-3. argv[0] detection (busybox pattern) — binary name mapping
-   └─ ccsd (symlink/batch file) → droid
+3. argv[0] detection (runtime alias pattern) — binary name mapping
+   └─ ccs-droid (explicit alias) → droid
+   └─ ccsd (legacy shortcut) → droid
    └─ ccs (regular command) → default
 
 4. Fallback: 'claude' — lowest priority
@@ -351,22 +352,31 @@ ccs --target droid glm
   (credentials loaded from ~/.factory/settings.json)
 ```
 
-### Binary Alias Pattern
+### Runtime Alias Pattern
 
 ```bash
-# Create alias/symlink to auto-select droid target
-# Built-in alias: ccsd
-ln -s /path/to/ccs /path/to/ccsd
+# Built-in package bin aliases
+ccs-droid glm
+→ Target: droid (forced by runtime alias)
+→ droid -m custom:ccs-glm "args..."
 
-# Usage
+# Legacy shortcut still works
 ccsd glm
-→ Target: droid (detected from argv[0])
+→ Target: droid (forced by runtime alias)
 → droid -m custom:ccs-glm "args..."
 ```
 
-On Windows, `ccsd.cmd`, `ccsd.bat`, `ccsd.ps1`, and `ccsd.exe` wrappers are also recognized.
+On Windows, `ccs-droid.cmd`, `ccsd.cmd`, `ccsd.bat`, `ccsd.ps1`, and `ccsd.exe` wrappers are also recognized.
 
-Additional alias names can be configured at runtime via `CCS_DROID_ALIASES` (comma-separated). Example: `CCS_DROID_ALIASES=ccs-droid,mydroid`.
+Additional alias names can be configured at runtime after you create a matching
+symlink or another launcher that preserves the invoked basename. Use `CCS_TARGET_ALIASES` (preferred,
+`target=alias1,alias2;...`) or legacy `CCS_DROID_ALIASES` (comma-separated).
+Example:
+
+```bash
+ln -s /path/to/ccs /path/to/mydroid
+CCS_TARGET_ALIASES=droid=mydroid
+```
 
 ---
 
@@ -612,7 +622,7 @@ ccs --target claude help
 ccs --target droid help
 
 # Test argv[0] detection
-ccsd help
+ccs-droid help
 ```
 
 ---

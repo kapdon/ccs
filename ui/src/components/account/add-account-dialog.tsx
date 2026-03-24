@@ -41,7 +41,6 @@ import {
   DEFAULT_KIRO_AUTH_METHOD,
   getKiroAuthMethodOption,
   isDeviceCodeProvider,
-  isNicknameRequiredProvider,
   KIRO_AUTH_METHOD_OPTIONS,
 } from '@/lib/provider-config';
 import type { KiroAuthMethod } from '@/lib/provider-config';
@@ -89,7 +88,6 @@ export function AddAccountDialog({
   const isAgyRiskChecklistComplete = isAntigravityRiskChecklistComplete(agyRiskChecklist);
   const isGeminiRiskAcknowledged = normalizeRiskPhrase(riskAcknowledgementText) === RISK_ACK_PHRASE;
   const defaultDeviceCode = isDeviceCodeProvider(provider);
-  const requiresNickname = isNicknameRequiredProvider(provider);
   const kiroMethodOption = getKiroAuthMethodOption(kiroAuthMethod);
   const isDeviceCode = isKiro ? kiroMethodOption.flowType === 'device_code' : defaultDeviceCode;
   const isPending = authFlow.isAuthenticating || kiroImportMutation.isPending;
@@ -266,10 +264,6 @@ export function AddAccountDialog({
       );
       return;
     }
-    if (requiresNickname && !nicknameTrimmed) {
-      setLocalError(`Nickname is required for ${displayName} accounts.`);
-      return;
-    }
     setLocalError(null);
     wasAuthenticatingRef.current = true;
     authFlow.startAuth(provider, {
@@ -394,11 +388,7 @@ export function AddAccountDialog({
           {/* Nickname input - only show before auth starts */}
           {!showAuthUI && (
             <div className="space-y-2">
-              <Label htmlFor="nickname">
-                {requiresNickname
-                  ? t('addAccountDialog.nicknameRequired')
-                  : t('addAccountDialog.nicknameOptional')}
-              </Label>
+              <Label htmlFor="nickname">{t('addAccountDialog.nicknameOptional')}</Label>
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <Input
@@ -414,9 +404,7 @@ export function AddAccountDialog({
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {requiresNickname
-                  ? t('addAccountDialog.nicknameRequiredHint')
-                  : t('addAccountDialog.nicknameOptionalHint')}
+                {t('addAccountDialog.nicknameOptionalHint')}
               </p>
             </div>
           )}
@@ -554,7 +542,6 @@ export function AddAccountDialog({
                 disabled={
                   isPending ||
                   isAgyBypassStatePending ||
-                  (requiresNickname && !nicknameTrimmed) ||
                   (requiresAgyResponsibilityFlow && !isAgyRiskChecklistComplete) ||
                   (requiresSafetyAcknowledgement && !isGeminiRiskAcknowledged)
                 }

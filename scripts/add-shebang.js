@@ -4,34 +4,47 @@
 const fs = require('fs');
 const path = require('path');
 
+function getExecutablePaths() {
+  const packageJsonPath = path.join(__dirname, '../package.json');
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  const binEntries = packageJson.bin || {};
+  const uniqueRelativePaths = [...new Set(Object.values(binEntries))];
+
+  return uniqueRelativePaths.map((relativePath) => path.join(__dirname, '..', relativePath));
+}
+
 /**
- * Add shebang to dist/ccs.js and make executable
+ * Add shebangs to all published bin entrypoints and make them executable.
  * Run after: tsc
  */
 function addShebang() {
-  const ccsPath = path.join(__dirname, '../dist/ccs.js');
-
-  if (!fs.existsSync(ccsPath)) {
-    console.error('[X] dist/ccs.js not found. Run tsc first.');
+  const executablePaths = getExecutablePaths();
+  const missingPaths = executablePaths.filter((executablePath) => !fs.existsSync(executablePath));
+  if (missingPaths.length > 0) {
+    console.error(`[X] Missing built executable(s): ${missingPaths.join(', ')}. Run tsc first.`);
     process.exit(1);
   }
 
-  let content = fs.readFileSync(ccsPath, 'utf8');
+  for (const executablePath of executablePaths) {
+    let content = fs.readFileSync(executablePath, 'utf8');
 
-  // Add shebang if missing
-  if (!content.startsWith('#!/usr/bin/env node')) {
-    content = '#!/usr/bin/env node\n' + content;
-    fs.writeFileSync(ccsPath, content);
-    console.log('[OK] Shebang added to dist/ccs.js');
-  }
+    if (!content.startsWith('#!/usr/bin/env node')) {
+      content = '#!/usr/bin/env node\n' + content;
+      fs.writeFileSync(executablePath, content);
+      console.log(`[OK] Shebang added to ${path.relative(path.join(__dirname, '..'), executablePath)}`);
+    }
 
-  // Make executable (Unix-like systems)
-  if (process.platform !== 'win32') {
-    try {
-      fs.chmodSync(ccsPath, 0o755);
-      console.log('[OK] dist/ccs.js is now executable');
-    } catch (err) {
-      console.warn('[!] Could not chmod dist/ccs.js:', err.message);
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(executablePath, 0o755);
+        console.log(
+          `[OK] ${path.relative(path.join(__dirname, '..'), executablePath)} is now executable`
+        );
+      } catch (err) {
+        console.warn(
+          `[!] Could not chmod ${path.relative(path.join(__dirname, '..'), executablePath)}: ${err.message}`
+        );
+      }
     }
   }
 }

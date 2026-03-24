@@ -1462,7 +1462,7 @@ export function CliproxyAiProvidersPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-[calc(100vh-100px)] min-h-0">
+      <div className="flex h-full min-h-0 overflow-hidden">
         <Skeleton className="h-full w-80 rounded-none" />
         <Skeleton className="h-full flex-1 rounded-none" />
       </div>
@@ -1476,7 +1476,7 @@ export function CliproxyAiProvidersPage() {
         : 'Failed to load CLIProxy AI providers. Check the local server and try again.';
 
     return (
-      <div className="flex h-[calc(100vh-100px)] min-h-0 items-center justify-center bg-muted/10 p-6">
+      <div className="flex h-full min-h-0 items-center justify-center bg-muted/10 p-6">
         <div className="w-full max-w-2xl rounded-xl border bg-card p-6 shadow-sm">
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-destructive/10">
@@ -1549,7 +1549,7 @@ export function CliproxyAiProvidersPage() {
     </div>
   );
   return (
-    <div className="flex h-[calc(100vh-100px)] min-h-0">
+    <div className="flex h-full min-h-0 overflow-hidden">
       <div className="flex w-80 flex-col border-r bg-muted/30">
         <div className="border-b bg-background p-4">
           <div className="mb-1 flex items-center justify-between">
@@ -1759,7 +1759,7 @@ export function CliproxyAiProvidersPage() {
                 onSave={async (payload) => {
                   await updateMutation.mutateAsync({
                     family: selectedFamily,
-                    index: selectedEntry.index,
+                    entryId: selectedEntry.id,
                     data: payload,
                   });
                   void refetch();
@@ -1793,7 +1793,7 @@ export function CliproxyAiProvidersPage() {
           if (editingEntry) {
             await updateMutation.mutateAsync({
               family: selectedFamily,
-              index: editingEntry.index,
+              entryId: editingEntry.id,
               data: payload,
             });
           } else {
@@ -1820,7 +1820,7 @@ export function CliproxyAiProvidersPage() {
           if (!deleteEntry) return;
           await deleteMutation.mutateAsync({
             family: selectedFamily,
-            index: deleteEntry.index,
+            entryId: deleteEntry.id,
           });
           setDeleteEntry(null);
         }}

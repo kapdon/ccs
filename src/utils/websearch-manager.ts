@@ -3,12 +3,13 @@
  *
  * WebSearch is a server-side tool executed by Anthropic's API.
  * Third-party providers (gemini, agy, codex, qwen) don't have access.
- * This manager installs a hook that uses CLI tools (Gemini CLI) as fallback.
+ * This manager installs a hook that uses deterministic local search backends,
+ * with legacy AI CLI tools kept only as optional fallback.
  *
  * Simplified Architecture:
- *   - No MCP complexity
- *   - Uses CLI tools (currently Gemini CLI)
- *   - Easy to extend for future CLI tools (opencode, etc.)
+ *   - No MCP dependency for the default path
+ *   - Uses real search providers first (DuckDuckGo, Brave)
+ *   - Keeps Gemini/OpenCode/Grok as compatibility fallback only
  *
  * @module utils/websearch-manager
  */

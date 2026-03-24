@@ -1,6 +1,6 @@
 {
   "name": "@kaitranntt/ccs",
-  "version": "7.56.0",
+  "version": "7.56.0-dev.6",
   "description": "Claude Code Switch - Instant profile switching between Claude, GLM, Kimi, and more",
   "keywords": [
     "cli",
@@ -27,7 +27,8 @@
   "types": "dist/ccs.d.ts",
   "bin": {
     "ccs": "dist/ccs.js",
-    "ccsd": "dist/ccs.js"
+    "ccs-droid": "dist/bin/droid-runtime.js",
+    "ccsd": "dist/bin/droid-runtime.js"
   },
   "files": [
     "dist/",

@@ -62,11 +62,22 @@ describe('ccsd alias integration', () => {
     expect(path.basename(argvPath)).toBe('ccsd');
   });
 
+  it('should preserve ccs-droid symlink basename in argv[1] under node', () => {
+    if (process.platform === 'win32') {
+      return;
+    }
+
+    const argvPath = probeArgvPath('ccs-droid');
+    expect(path.basename(argvPath)).toBe('ccs-droid');
+  });
+
   it('should preserve extension-style alias basenames for wrapper compatibility', () => {
     const cmdArgvPath = probeArgvPathDirect('ccsd.cmd');
     const ps1ArgvPath = probeArgvPathDirect('ccsd.ps1');
+    const explicitCmdArgvPath = probeArgvPathDirect('ccs-droid.cmd');
 
     expect(path.basename(cmdArgvPath)).toBe('ccsd.cmd');
     expect(path.basename(ps1ArgvPath)).toBe('ccsd.ps1');
+    expect(path.basename(explicitCmdArgvPath)).toBe('ccs-droid.cmd');
   });
 });
