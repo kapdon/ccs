@@ -40,6 +40,8 @@ RUN test -d dist && test -d lib && echo "[OK] Build artifacts validated"
 # =============================================================================
 FROM node:20-bookworm-slim AS runtime
 
+LABEL org.opencontainers.image.source="https://github.com/kaitranntt/ccs"
+
 SHELL ["/bin/bash", "-lc"]
 
 # Pin bun version for reproducible builds
