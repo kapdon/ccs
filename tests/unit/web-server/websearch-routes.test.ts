@@ -28,6 +28,17 @@ describe('websearch routes', () => {
   let originalEnvValues: Record<(typeof WEBSEARCH_ENV_KEYS)[number], string | undefined>;
   let forcedRemoteAddress = '127.0.0.1';
 
+  async function putWebsearch(
+    body: string | Record<string, unknown>,
+    headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  ): Promise<Response> {
+    return fetch(`${baseUrl}/api/websearch`, {
+      method: 'PUT',
+      headers,
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+  }
+
   beforeAll(async () => {
     const app = express();
     app.use(express.json());
@@ -278,11 +289,7 @@ describe('websearch routes', () => {
   });
 
   it('rejects non-object request bodies', async () => {
-    const response = await fetch(`${baseUrl}/api/websearch`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: '[]',
-    });
+    const response = await putWebsearch('[]');
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
@@ -290,15 +297,16 @@ describe('websearch routes', () => {
     });
   });
 
+  it('rejects primitive JSON null bodies before route validation', async () => {
+    const response = await putWebsearch('null');
+    expect(response.status).toBe(400);
+  });
+
   it('rejects unsupported API key providers', async () => {
-    const response = await fetch(`${baseUrl}/api/websearch`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apiKeys: {
-          invalid: 'secret',
-        },
-      }),
+    const response = await putWebsearch({
+      apiKeys: {
+        invalid: 'secret',
+      },
     });
 
     expect(response.status).toBe(400);
@@ -308,19 +316,42 @@ describe('websearch routes', () => {
   });
 
   it('rejects non-string API key values', async () => {
-    const response = await fetch(`${baseUrl}/api/websearch`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apiKeys: {
-          exa: 123,
-        },
-      }),
+    const response = await putWebsearch({
+      apiKeys: {
+        exa: 123,
+      },
     });
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: 'Invalid value for exa API key',
     });
+  });
+
+  it('rejects null and array values for providers and apiKeys', async () => {
+    const invalidPayloads = [
+      {
+        body: { providers: null },
+        error: 'Invalid value for providers. Must be an object.',
+      },
+      {
+        body: { providers: [] },
+        error: 'Invalid value for providers. Must be an object.',
+      },
+      {
+        body: { apiKeys: null },
+        error: 'Invalid value for apiKeys. Must be an object.',
+      },
+      {
+        body: { apiKeys: [] },
+        error: 'Invalid value for apiKeys. Must be an object.',
+      },
+    ] as const;
+
+    for (const invalidPayload of invalidPayloads) {
+      const response = await putWebsearch(invalidPayload.body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: invalidPayload.error });
+    }
   });
 });

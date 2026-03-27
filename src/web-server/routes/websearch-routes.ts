@@ -9,6 +9,7 @@ import { getWebSearchReadiness, getWebSearchCliProviders } from '../../utils/web
 import {
   applyWebSearchApiKeyUpdates,
   getWebSearchApiKeyStates,
+  WEBSEARCH_API_KEY_PROVIDERS,
   type WebSearchApiKeyProviderId,
 } from '../../utils/websearch/provider-secrets';
 import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middleware';
@@ -16,12 +17,15 @@ import { requireLocalAccessWhenAuthDisabled } from '../middleware/auth-middlewar
 const router = Router();
 const WEBSEARCH_LOCAL_ACCESS_ERROR =
   'WebSearch endpoints require localhost access when dashboard auth is disabled.';
-const WEBSEARCH_API_KEY_PROVIDER_IDS = ['exa', 'tavily', 'brave'] as const;
 
 type WebSearchApiKeyUpdates = Partial<Record<WebSearchApiKeyProviderId, string | null>>;
 
 interface WebSearchDashboardPayload extends Partial<WebSearchConfig> {
   apiKeys?: WebSearchApiKeyUpdates;
+}
+
+function isWebSearchApiKeyProviderId(value: string): value is WebSearchApiKeyProviderId {
+  return Object.prototype.hasOwnProperty.call(WEBSEARCH_API_KEY_PROVIDERS, value);
 }
 
 router.use((req: Request, res: Response, next) => {
@@ -88,7 +92,7 @@ router.put('/', (req: Request, res: Response): void => {
 
   if (apiKeys) {
     for (const [providerId, value] of Object.entries(apiKeys)) {
-      if (!WEBSEARCH_API_KEY_PROVIDER_IDS.includes(providerId as WebSearchApiKeyProviderId)) {
+      if (!isWebSearchApiKeyProviderId(providerId)) {
         res.status(400).json({ error: `Unsupported WebSearch provider: ${providerId}` });
         return;
       }
