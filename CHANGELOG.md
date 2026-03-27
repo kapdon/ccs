@@ -1,3 +1,29 @@
+## [7.60.0](https://github.com/kaitranntt/ccs/compare/v7.59.0...v7.60.0) (2026-03-27)
+
+### Features
+
+* **websearch:** manage provider API keys in dashboard ([20c48c6](https://github.com/kaitranntt/ccs/commit/20c48c61050c9c15b07df1a996ec1d3b73328217))
+
+### Bug Fixes
+
+* **settings:** prevent config panel flash on refresh ([5782edf](https://github.com/kaitranntt/ccs/commit/5782edf62706427c985d03f115726ca765c369ac))
+* **websearch:** narrow provider key handlers for build ([a3ca496](https://github.com/kaitranntt/ccs/commit/a3ca496fa814e7c711b610ced79694e9489dfa4f))
+* **websearch:** narrow provider key summary access ([d883951](https://github.com/kaitranntt/ccs/commit/d883951c9e4738b33bc057fe9230727a9bf5c25f))
+
+### Documentation
+
+* **websearch:** document inline provider key flow ([f462b9f](https://github.com/kaitranntt/ccs/commit/f462b9fed107e506488356dc7384fa22485e40cf))
+
+### Styles
+
+* **ui:** format files for enforced prettier rules ([1c8246a](https://github.com/kaitranntt/ccs/commit/1c8246a60edfff8ca9ea03793505bb8d9e4a6b23))
+
+### CI
+
+* **ai-review:** enable show_full_output for review visibility ([6dca069](https://github.com/kaitranntt/ccs/commit/6dca069c7d4642b24c2270cd51e0f0c0d2c900d8))
+* **ai-review:** remove custom Claude CLI path to prevent version drift ([0334f70](https://github.com/kaitranntt/ccs/commit/0334f70991a926dfff5b097284f12bf2aa04e3d1)), closes [#810](https://github.com/kaitranntt/ccs/issues/810)
+* **ai-review:** upgrade model, add fallback extraction, preserve logs ([bb5862f](https://github.com/kaitranntt/ccs/commit/bb5862f0a01772f975cc95bc2b6581c8b1bb454a))
+
 ## [7.59.0](https://github.com/kaitranntt/ccs/compare/v7.58.0...v7.59.0) (2026-03-26)
 
 ### Features
