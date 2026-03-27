@@ -156,6 +156,7 @@ bun run validate            # Step 3: Final check (must pass)
 | `ccs copilot --help` | `src/commands/copilot-command.ts` → `handleHelp()` |
 | `ccs cursor --help` | `src/commands/cursor-command.ts` → `handleHelp()` |
 | `ccs doctor --help` | `src/commands/doctor-command.ts` → `showHelp()` |
+| `ccs docker --help` | `src/commands/docker/help-subcommand.ts` → `showHelp()` |
 | `ccs migrate --help` | `src/commands/migrate-command.ts` → `printMigrateHelp()` |
 | `ccs env --help` | `src/commands/env-command.ts` → `showHelp()` |
 | `ccs persist --help` | `src/commands/persist-command.ts` → `showHelp()` |
