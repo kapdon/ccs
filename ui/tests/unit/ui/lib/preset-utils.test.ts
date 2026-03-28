@@ -92,4 +92,17 @@ describe('claude preset utils', () => {
       'gemini-3-flash-preview'
     );
   });
+
+  it('passes through non-Gemini model ids unchanged', () => {
+    expect(resolveCatalogModelId('claude-sonnet-4-6')).toBe('claude-sonnet-4-6');
+  });
+
+  it('falls back to the catalog id when no live model matches', () => {
+    expect(resolveCatalogModelId('gemini-3.1-pro-preview', [])).toBe('gemini-3.1-pro-preview');
+    expect(
+      resolveCatalogModelId('gemini-3.1-pro-preview', [
+        { id: 'gemini-2.5-pro', owned_by: 'google' },
+      ])
+    ).toBe('gemini-3.1-pro-preview');
+  });
 });

@@ -76,6 +76,22 @@ describe('model-pricing', () => {
       expect(pricing).not.toEqual(getModelPricing('unknown-model-xyz'));
     });
 
+    it('should map Gemini 3 and 3.1 Flash preview variants to flash pricing', () => {
+      const canonical = getModelPricing('gemini-2.5-flash');
+      const aliases = [
+        'gemini-3-flash-preview',
+        'gemini-3-flash-preview-customtools',
+        'gemini-3.1-flash-preview',
+        'gemini-3.1-flash-preview-customtools',
+        'gemini-3-1-flash-preview',
+        'gemini-3-1-flash-preview-customtools',
+      ];
+
+      for (const model of aliases) {
+        expect(getModelPricing(model)).toEqual(canonical);
+      }
+    });
+
     it('should return different pricing for different model tiers', () => {
       const sonnet = getModelPricing('claude-sonnet-4-5');
       const opus = getModelPricing('claude-opus-4-5-20251101');

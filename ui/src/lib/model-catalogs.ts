@@ -5,7 +5,7 @@
 
 import type { ModelEntry, ProviderCatalog } from '@/components/cliproxy/provider-model-selector';
 import { stripModelConfigurationSuffixes } from '@/lib/extended-context-utils';
-import { GEMINI_MINOR_VERSION_COMPATIBILITY_IDS } from '../../../src/shared/gemini-minor-version-compatibility';
+import { GEMINI_MINOR_VERSION_COMPATIBILITY_IDS } from '@shared/gemini-minor-version-compatibility';
 
 const GEMINI_PREVIEW_MODEL_ID_PATTERN =
   /^gemini-(\d+(?:[.-]\d+)*)-(pro|flash)-preview(-customtools)?$/i;

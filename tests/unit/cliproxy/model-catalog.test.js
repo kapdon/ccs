@@ -261,6 +261,21 @@ describe('Model Catalog', () => {
       );
     });
 
+    it('falls back to the next supported model when the default is excluded', () => {
+      const { getSuggestedReplacementModel } = modelCatalog;
+
+      expect(getSuggestedReplacementModel('agy', 'claude-opus-4-6-thinking')).toBe(
+        'claude-sonnet-4-6'
+      );
+      expect(getSuggestedReplacementModel('agy')).toBe('claude-opus-4-6-thinking');
+    });
+
+    it('returns undefined when no provider catalog exists', () => {
+      const { getSuggestedReplacementModel } = modelCatalog;
+
+      expect(getSuggestedReplacementModel('qwen')).toBeUndefined();
+    });
+
     it('returns undefined for unknown model', () => {
       const { findModel } = modelCatalog;
       const model = findModel('agy', 'unknown-model');
