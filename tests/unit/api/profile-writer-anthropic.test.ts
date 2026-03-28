@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -15,6 +15,8 @@ describe('profile-writer Anthropic direct', () => {
   });
 
   afterEach(() => {
+    mock.restore();
+
     if (originalCcsHome === undefined) {
       delete process.env.CCS_HOME;
     } else {
@@ -100,5 +102,49 @@ describe('profile-writer Anthropic direct', () => {
     expect(settings.env.ANTHROPIC_BASE_URL).toBe('https://openrouter.ai/api');
     expect(settings.env.ANTHROPIC_AUTH_TOKEN).toBe('sk-or-testkey');
     expect(settings.env.ANTHROPIC_API_KEY).toBe('');
+  });
+
+  it('rolls back the created settings file when WebSearch hook installation fails', () => {
+    const copyFileSpy = spyOn(fs, 'copyFileSync').mockImplementation(() => {
+      throw new Error('copy failed');
+    });
+
+    const result = createApiProfile(
+      'hook-failure',
+      'https://api.z.ai/api/anthropic',
+      'ghp_testkey123',
+      { default: 'glm-5', opus: 'glm-5', sonnet: 'glm-5', haiku: 'glm-5' }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('could not prepare the profile hook');
+    expect(copyFileSpy).toHaveBeenCalled();
+    expect(fs.existsSync(path.join(tempHome, '.ccs', 'hook-failure.settings.json'))).toBe(false);
+  });
+
+  it('keeps profile creation non-fatal when WebSearch is disabled', () => {
+    fs.mkdirSync(path.join(tempHome, '.ccs'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempHome, '.ccs', 'config.yaml'),
+      'version: 12\nwebsearch:\n  enabled: false\n',
+      'utf8'
+    );
+
+    const copyFileSpy = spyOn(fs, 'copyFileSync').mockImplementation(() => {
+      throw new Error('copy should not run when WebSearch is disabled');
+    });
+
+    const result = createApiProfile(
+      'disabled-websearch',
+      'https://api.z.ai/api/anthropic',
+      'ghp_testkey123',
+      { default: 'glm-5', opus: 'glm-5', sonnet: 'glm-5', haiku: 'glm-5' }
+    );
+
+    expect(result.success).toBe(true);
+    expect(copyFileSpy).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(tempHome, '.ccs', 'disabled-websearch.settings.json'))).toBe(
+      true
+    );
   });
 });

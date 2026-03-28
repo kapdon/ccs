@@ -9,7 +9,7 @@ import * as path from 'path';
 import type { Config, Settings } from '../../types';
 import type { TargetType } from '../../targets/target-adapter';
 import { getCcsDir, getConfigPath, loadConfigSafe } from '../../utils/config-manager';
-import { ensureProfileHooks } from '../../utils/websearch/profile-hook-injector';
+import { ensureProfileHooksOrThrow } from '../../utils/websearch/profile-hook-injector';
 import { isSensitiveKey } from '../../utils/sensitive-keys';
 import { isReservedName } from '../../config/reserved-names';
 import { isUnifiedMode, mutateUnifiedConfig } from '../../config/unified-config-loader';
@@ -216,8 +216,8 @@ export function registerApiProfileOrphans(options?: {
     }
 
     try {
+      ensureProfileHooksOrThrow(orphan.name);
       registerApiProfileInConfig(orphan.name, options?.target || 'claude', options?.force || false);
-      ensureProfileHooks(orphan.name);
       result.registered.push(orphan.name);
     } catch (error) {
       result.skipped.push({ name: orphan.name, reason: (error as Error).message });
@@ -264,7 +264,12 @@ export function copyApiProfile(
       : null;
 
     writeJsonObjectAtomically(destinationSettingsPath, sourceSettings);
-    ensureProfileHooks(destination);
+    try {
+      ensureProfileHooksOrThrow(destination);
+    } catch (hookError) {
+      rollbackSettingsFile(destinationSettingsPath, previousDestinationContent, destinationExisted);
+      throw hookError;
+    }
     try {
       registerApiProfileInConfig(
         destination,
@@ -384,7 +389,12 @@ export function importApiProfileBundle(
     const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
 
     writeJsonObjectAtomically(settingsPath, settings);
-    ensureProfileHooks(name);
+    try {
+      ensureProfileHooksOrThrow(name);
+    } catch (hookError) {
+      rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+      throw hookError;
+    }
     try {
       registerApiProfileInConfig(name, options?.target || bundleTarget || 'claude', options?.force);
     } catch (registrationError) {

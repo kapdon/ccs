@@ -14,7 +14,7 @@ import { expandPath } from '../../utils/helpers';
 import { getClaudeEnvVars, CLIPROXY_DEFAULT_PORT } from '../config-generator';
 import { CLIProxyProvider } from '../types';
 import { CompositeTierConfig } from '../../config/unified-config-types';
-import { ensureProfileHooks } from '../../utils/websearch/profile-hook-injector';
+import { ensureProfileHooksOrThrow } from '../../utils/websearch/profile-hook-injector';
 import { ensureProfileHooks as ensureImageAnalyzerHooks } from '../../utils/hooks/image-analyzer-profile-hook-injector';
 import { getEffectiveApiKey } from '../auth-token-manager';
 import { warn } from '../../utils/ui';
@@ -95,6 +95,21 @@ function writeSettings(filePath: string, settings: SettingsFile): void {
   fs.renameSync(tempPath, filePath);
 }
 
+function rollbackSettingsFile(
+  filePath: string,
+  previousContent: string | null,
+  existedBefore: boolean
+): void {
+  if (existedBefore && previousContent !== null) {
+    fs.writeFileSync(filePath, previousContent, 'utf8');
+    return;
+  }
+
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
+
 /**
  * Get settings file path for a variant
  */
@@ -133,11 +148,18 @@ export function createSettingsFile(
     env: buildSettingsEnv(provider, model, port),
   };
 
+  const settingsExisted = fs.existsSync(settingsPath);
+  const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
   ensureDir(ccsDir);
   writeSettings(settingsPath, settings);
 
-  // Inject WebSearch hooks into variant settings
-  ensureProfileHooks(`${provider}-${name}`);
+  try {
+    // Inject WebSearch hooks into variant settings
+    ensureProfileHooksOrThrow(`${provider}-${name}`);
+  } catch (error) {
+    rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+    throw error;
+  }
 
   // Inject Image Analyzer hooks into variant settings
   ensureImageAnalyzerHooks(`${provider}-${name}`);
@@ -161,11 +183,18 @@ export function createSettingsFileUnified(
     env: buildSettingsEnv(provider, model, port),
   };
 
+  const settingsExisted = fs.existsSync(settingsPath);
+  const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
   ensureDir(ccsDir);
   writeSettings(settingsPath, settings);
 
-  // Inject WebSearch hooks into variant settings
-  ensureProfileHooks(`${provider}-${name}`);
+  try {
+    // Inject WebSearch hooks into variant settings
+    ensureProfileHooksOrThrow(`${provider}-${name}`);
+  } catch (error) {
+    rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+    throw error;
+  }
 
   // Inject Image Analyzer hooks into variant settings
   ensureImageAnalyzerHooks(`${provider}-${name}`);
@@ -252,12 +281,19 @@ export function createCompositeSettingsFile(
     }
   }
 
+  const settingsExisted = fs.existsSync(settingsPath);
+  const previousSettingsContent = settingsExisted ? fs.readFileSync(settingsPath, 'utf8') : null;
   ensureDir(settingsDir);
   writeSettings(settingsPath, settings);
 
   // Hook injectors target ~/.ccs/<profile>.settings.json; only run for default path.
   if (path.resolve(settingsPath) === path.resolve(defaultSettingsPath)) {
-    ensureProfileHooks(`composite-${name}`);
+    try {
+      ensureProfileHooksOrThrow(`composite-${name}`);
+    } catch (error) {
+      rollbackSettingsFile(settingsPath, previousSettingsContent, settingsExisted);
+      throw error;
+    }
     ensureImageAnalyzerHooks(`composite-${name}`);
   }
 

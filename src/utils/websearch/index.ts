@@ -62,4 +62,4 @@ export {
 export { WEBSEARCH_API_KEY_PROVIDERS, getWebSearchApiKeyStates } from './provider-secrets';
 
 // Profile Hook Injection
-export { ensureProfileHooks } from './profile-hook-injector';
+export { ensureProfileHooks, ensureProfileHooksOrThrow } from './profile-hook-injector';

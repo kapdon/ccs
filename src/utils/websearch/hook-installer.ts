@@ -19,6 +19,21 @@ export { getHookPath, getWebSearchHookConfig } from './hook-config';
 // Hook file name
 const WEBSEARCH_HOOK = 'websearch-transformer.cjs';
 
+function hasMatchingHookContents(sourcePath: string, destinationPath: string): boolean {
+  if (!fs.existsSync(destinationPath)) {
+    return false;
+  }
+
+  const source = fs.readFileSync(sourcePath);
+  const destination = fs.readFileSync(destinationPath);
+  return source.equals(destination);
+}
+
+function getTempHookPath(hookPath: string): string {
+  const uniqueSuffix = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${hookPath}.${uniqueSuffix}.tmp`;
+}
+
 export function getMigrationMarkerPath(): string {
   return path.join(getCcsDir(), '.hook-migrated');
 }
@@ -94,9 +109,35 @@ export function installWebSearchHook(): boolean {
       return false;
     }
 
-    // Copy hook to ~/.ccs/hooks/
-    fs.copyFileSync(sourcePath, hookPath);
-    fs.chmodSync(hookPath, 0o755);
+    // Avoid rewriting the shared hook binary when the bundled script is unchanged.
+    if (hasMatchingHookContents(sourcePath, hookPath)) {
+      return true;
+    }
+
+    // Copy hook to ~/.ccs/hooks/ via a unique temp path so concurrent installers
+    // do not contend on the same file.
+    const tempHookPath = getTempHookPath(hookPath);
+    try {
+      fs.copyFileSync(sourcePath, tempHookPath);
+      fs.chmodSync(tempHookPath, 0o755);
+
+      try {
+        fs.renameSync(tempHookPath, hookPath);
+      } catch (renameError) {
+        const errorCode = (renameError as NodeJS.ErrnoException).code;
+        if (errorCode !== 'EEXIST' && errorCode !== 'EPERM') {
+          throw renameError;
+        }
+
+        fs.copyFileSync(tempHookPath, hookPath);
+        fs.chmodSync(hookPath, 0o755);
+        fs.unlinkSync(tempHookPath);
+      }
+    } finally {
+      if (fs.existsSync(tempHookPath)) {
+        fs.unlinkSync(tempHookPath);
+      }
+    }
 
     if (process.env.CCS_DEBUG) {
       console.error(info(`Installed WebSearch hook: ${hookPath}`));

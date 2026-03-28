@@ -63,7 +63,7 @@ export {
 } from './websearch/status';
 
 // Re-export profile hook injection
-export { ensureProfileHooks } from './websearch/profile-hook-injector';
+export { ensureProfileHooks, ensureProfileHooksOrThrow } from './websearch/profile-hook-injector';
 
 // Import for local use
 import { clearGeminiCliCache, clearGrokCliCache, clearOpenCodeCliCache } from './websearch';

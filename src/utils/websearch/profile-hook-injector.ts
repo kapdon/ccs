@@ -20,6 +20,21 @@ import { getMigrationMarkerPath, installWebSearchHook } from './hook-installer';
 // Valid profile name pattern (alphanumeric, dash, underscore only)
 const VALID_PROFILE_NAME = /^[a-zA-Z0-9_-]+$/;
 
+function hasUsableHookBinary(): boolean {
+  try {
+    const hookPath = getHookPath();
+    const stat = fs.statSync(hookPath);
+    if (!stat.isFile()) {
+      return false;
+    }
+
+    fs.accessSync(hookPath, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Check if CCS WebSearch hook exists in settings
  */
@@ -83,25 +98,8 @@ export function ensureProfileHooks(profileName: string): boolean {
       return false;
     }
 
-    // Keep the injected command target valid for all profile types, not just CLIProxy.
-    if (!installWebSearchHook() && !fs.existsSync(getHookPath())) {
-      if (process.env.CCS_DEBUG) {
-        console.error(warn('WebSearch hook binary is missing and could not be installed'));
-      }
-      return false;
-    }
-
-    // One-time migration from global settings
-    migrateGlobalHook();
-
     // Get CCS directory (respects CCS_HOME for test isolation)
     const ccsDir = getCcsDir();
-
-    // Ensure CCS dir exists
-    if (!fs.existsSync(ccsDir)) {
-      fs.mkdirSync(ccsDir, { recursive: true, mode: 0o700 });
-    }
-
     const settingsPath = path.join(ccsDir, `${profileName}.settings.json`);
 
     // Read existing settings or create empty
@@ -119,6 +117,25 @@ export function ensureProfileHooks(profileName: string): boolean {
         // Never overwrite malformed settings files; avoid destructive data loss.
         return false;
       }
+    }
+
+    // Keep the injected command target valid for all profile types, not just CLIProxy.
+    // The installer already skips byte-identical copies, so we can always attempt a refresh
+    // without rewriting unchanged hooks. Re-check existence after a failed install to tolerate
+    // concurrent first-run installs that may have completed in another process.
+    if (!installWebSearchHook() && !hasUsableHookBinary()) {
+      if (process.env.CCS_DEBUG) {
+        console.error(warn('WebSearch hook binary is missing and could not be installed'));
+      }
+      return false;
+    }
+
+    // One-time migration from global settings
+    migrateGlobalHook();
+
+    // Ensure CCS dir exists before writing settings updates.
+    if (!fs.existsSync(ccsDir)) {
+      fs.mkdirSync(ccsDir, { recursive: true, mode: 0o700 });
     }
 
     // Check if CCS hook already present
@@ -173,6 +190,19 @@ export function ensureProfileHooks(profileName: string): boolean {
       console.error(warn(`Failed to inject hook: ${(error as Error).message}`));
     }
     return false;
+  }
+}
+
+export function ensureProfileHooksOrThrow(profileName: string): void {
+  const wsConfig = getWebSearchConfig();
+  if (!wsConfig.enabled) {
+    return;
+  }
+
+  if (!ensureProfileHooks(profileName)) {
+    throw new Error(
+      `WebSearch is enabled, but CCS could not prepare the profile hook for "${profileName}".`
+    );
   }
 }
 

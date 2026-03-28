@@ -27,6 +27,10 @@ describe('ensureProfileHooks', () => {
     return path.join(tempHome, '.ccs');
   }
 
+  function getBundledHookContents(): string {
+    return fs.readFileSync(path.join(process.cwd(), 'lib', 'hooks', 'websearch-transformer.cjs'), 'utf8');
+  }
+
   afterEach(() => {
     mock.restore();
 
@@ -69,7 +73,7 @@ describe('ensureProfileHooks', () => {
 
     const hookPath = getHookPath();
     fs.mkdirSync(path.dirname(hookPath), { recursive: true });
-    fs.writeFileSync(hookPath, '// existing hook', 'utf8');
+    fs.writeFileSync(hookPath, getBundledHookContents(), 'utf8');
 
     const copyFileSpy = spyOn(fs, 'copyFileSync').mockImplementation(() => {
       throw new Error('copy skipped');
@@ -80,8 +84,72 @@ describe('ensureProfileHooks', () => {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
 
     expect(ensured).toBe(true);
-    expect(copyFileSpy).toHaveBeenCalled();
+    expect(copyFileSpy).not.toHaveBeenCalled();
     expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(`node "${hookPath}"`);
+  });
+
+  it('does not rewrite the shared hook binary when it is already installed', () => {
+    setupTempHome();
+
+    expect(ensureProfileHooks('glm')).toBe(true);
+
+    const firstMtime = fs.statSync(getHookPath()).mtimeMs;
+    const waitUntil = Date.now() + 25;
+    while (Date.now() < waitUntil) {
+      // Give the filesystem timestamp a chance to advance if a rewrite occurs.
+    }
+
+    expect(ensureProfileHooks('glm')).toBe(true);
+    const secondMtime = fs.statSync(getHookPath()).mtimeMs;
+
+    expect(secondMtime).toBe(firstMtime);
+  });
+
+  it('refreshes a stale shared hook binary when the bundled script has changed', () => {
+    setupTempHome();
+
+    const hookPath = getHookPath();
+    fs.mkdirSync(path.dirname(hookPath), { recursive: true });
+    fs.writeFileSync(hookPath, '// stale hook', 'utf8');
+
+    expect(ensureProfileHooks('glm')).toBe(true);
+    const installedHook = fs.readFileSync(hookPath, 'utf8');
+
+    expect(installedHook).not.toBe('// stale hook');
+    expect(installedHook).toContain('CCS WebSearch Hook');
+  });
+
+  it('succeeds when another process installs the hook during a failed local install', () => {
+    setupTempHome();
+
+    const hookPath = getHookPath();
+    const originalCopyFileSync = fs.copyFileSync;
+    const copyFileSpy = spyOn(fs, 'copyFileSync').mockImplementation((source, destination) => {
+      originalCopyFileSync(source, hookPath);
+      throw new Error(`simulated concurrent winner while copying to ${String(destination)}`);
+    });
+
+    const ensured = ensureProfileHooks('glm');
+    const settingsPath = path.join(getCcsDir(), 'glm.settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+
+    expect(ensured).toBe(true);
+    expect(copyFileSpy).toHaveBeenCalled();
+    expect(fs.existsSync(hookPath)).toBe(true);
+    expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(`node "${hookPath}"`);
+  });
+
+  it('returns false when the hook path exists but is unusable', () => {
+    setupTempHome();
+
+    const hookPath = getHookPath();
+    fs.mkdirSync(hookPath, { recursive: true });
+
+    const ensured = ensureProfileHooks('glm');
+
+    expect(ensured).toBe(false);
+    expect(fs.statSync(hookPath).isDirectory()).toBe(true);
+    expect(fs.existsSync(path.join(getCcsDir(), 'glm.settings.json'))).toBe(false);
   });
 
   it('returns false for invalid profile names without creating files', () => {
