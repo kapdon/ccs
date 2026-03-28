@@ -36,8 +36,8 @@ export async function downloadAndInstall(
   fs.mkdirSync(config.binPath, { recursive: true });
 
   // Delete existing binary before install to prevent mismatched binaries.
-  // Skip if binary is currently running (ETXTBSY) — happens in Docker when
-  // the dashboard tries to update while bootstrap's instance is active.
+  // Abort if binary is currently running (ETXTBSY) — cannot replace in-use binary.
+  // Happens in Docker when dashboard tries to update while bootstrap's instance is active.
   const existingBinary = path.join(config.binPath, getExecutableName(backend));
   if (fs.existsSync(existingBinary)) {
     try {
@@ -46,9 +46,12 @@ export async function downloadAndInstall(
     } catch (error: unknown) {
       const code =
         error instanceof Error && 'code' in error ? (error as { code: string }).code : '';
-      if (code === 'ETXTBSY' || code === 'EBUSY') {
+      // ETXTBSY: Linux-specific error when unlinking a running executable.
+      // EBUSY on Windows may mean something different (mount point, etc.),
+      // so only treat ETXTBSY as "binary in use" to avoid misleading messages.
+      if (code === 'ETXTBSY') {
         if (verbose)
-          console.error(`[cliproxy] Binary is running, skipping update: ${existingBinary}`);
+          console.error(`[cliproxy] Binary is running, cannot replace: ${existingBinary}`);
         throw new Error(
           'CLIProxy binary is currently running and cannot be replaced. Restart the container to apply the update.'
         );
@@ -120,7 +123,7 @@ export function deleteBinary(binPath: string, verbose = false, backend?: CLIProx
     } catch (error: unknown) {
       const code =
         error instanceof Error && 'code' in error ? (error as { code: string }).code : '';
-      if (code === 'ETXTBSY' || code === 'EBUSY') {
+      if (code === 'ETXTBSY') {
         throw new Error('CLIProxy binary is currently running and cannot be deleted.');
       }
       throw error;

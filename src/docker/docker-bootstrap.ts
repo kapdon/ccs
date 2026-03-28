@@ -38,8 +38,14 @@ async function runCliproxy(): Promise<number> {
     let sessionId: string | undefined;
     child.on('spawn', () => {
       if (!child.pid) return;
-      const version = getInstalledCliproxyVersion();
-      sessionId = registerSession(CLIPROXY_DEFAULT_PORT, child.pid, version, 'plus');
+      try {
+        const version = getInstalledCliproxyVersion();
+        sessionId = registerSession(CLIPROXY_DEFAULT_PORT, child.pid, version, 'plus');
+      } catch (err) {
+        console.error(
+          `[cliproxy] Failed to register session lock: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
     });
 
     child.on('error', reject);
