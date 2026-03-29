@@ -15,7 +15,8 @@ module.exports = {
       'chore',    // Maintenance → no release
       'ci',       // CI/CD changes → no release
       'build',    // Build system → no release
-      'revert'    // Revert commit → PATCH
+      'revert',   // Revert commit → PATCH
+      'hotfix'    // Production hotfix → PATCH
     ]],
     // Subject case - disabled to allow capital letters
     'subject-case': [0],
