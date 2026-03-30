@@ -43,3 +43,10 @@ Output expectations:
 - Use `approved` only when the diff is ready to merge as-is.
 - Use `approved_with_notes` when only non-blocking follow-ups remain.
 - Use `changes_requested` when any blocking issue remains.
+- Fill the structured fields only. The renderer owns the markdown layout.
+- Keep `summary` to plain prose only. Do not include the PR title, a separate verdict line, markdown tables, file inventories, or custom section headings there.
+- Keep `what`, `why`, and `fix` concise plain text. Do not emit headings, tables, or fenced code blocks inside those fields.
+- Use `securityChecklist` for concise review rows about security-sensitive checks. Provide at least 1 row, and use 2-5 when possible. `status` = `pass` | `fail` | `na`.
+- Use `ccsCompliance` for concise CCS-specific rule checks. Provide at least 1 row, and use 2-5 when possible. `status` = `pass` | `fail` | `na`.
+- Use `informational` for small non-blocking observations that are worth calling out.
+- Use `strengths` for specific things done well. No generic praise.

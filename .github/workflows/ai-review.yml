@@ -152,7 +152,7 @@ jobs:
       REVIEW_OUTPUT_FILE: pr_review.md
       REVIEW_COMMENT_FILE: .ccs-ai-review-comment.md
       REVIEW_OUTPUT_SCHEMA: >-
-        {"type":"object","additionalProperties":false,"properties":{"summary":{"type":"string","minLength":1},"findings":{"type":"array","maxItems":6,"items":{"type":"object","additionalProperties":false,"properties":{"severity":{"type":"string","enum":["high","medium","low"]},"title":{"type":"string","minLength":1},"file":{"type":"string","minLength":1},"line":{"type":["integer","null"],"minimum":1},"what":{"type":"string","minLength":1},"why":{"type":"string","minLength":1},"fix":{"type":"string","minLength":1}},"required":["severity","title","file","what","why","fix"]}},"overallAssessment":{"type":"string","enum":["approved","approved_with_notes","changes_requested"]},"overallRationale":{"type":"string","minLength":1},"notes":{"type":"array","maxItems":4,"items":{"type":"string","minLength":1}}},"required":["summary","findings","overallAssessment","overallRationale"]}
+        {"type":"object","additionalProperties":false,"properties":{"summary":{"type":"string","minLength":1,"maxLength":600},"findings":{"type":"array","maxItems":6,"items":{"type":"object","additionalProperties":false,"properties":{"severity":{"type":"string","enum":["high","medium","low"]},"title":{"type":"string","minLength":1,"maxLength":180},"file":{"type":"string","minLength":1,"maxLength":240},"line":{"type":["integer","null"],"minimum":1},"what":{"type":"string","minLength":1,"maxLength":500},"why":{"type":"string","minLength":1,"maxLength":500},"fix":{"type":"string","minLength":1,"maxLength":500}},"required":["severity","title","file","what","why","fix"]}},"securityChecklist":{"type":"array","minItems":1,"maxItems":5,"items":{"type":"object","additionalProperties":false,"properties":{"check":{"type":"string","minLength":1,"maxLength":80},"status":{"type":"string","enum":["pass","fail","na"]},"notes":{"type":"string","minLength":1,"maxLength":180}},"required":["check","status","notes"]}},"ccsCompliance":{"type":"array","minItems":1,"maxItems":5,"items":{"type":"object","additionalProperties":false,"properties":{"rule":{"type":"string","minLength":1,"maxLength":80},"status":{"type":"string","enum":["pass","fail","na"]},"notes":{"type":"string","minLength":1,"maxLength":180}},"required":["rule","status","notes"]}},"informational":{"type":"array","maxItems":4,"items":{"type":"string","minLength":1,"maxLength":220}},"strengths":{"type":"array","maxItems":4,"items":{"type":"string","minLength":1,"maxLength":220}},"overallAssessment":{"type":"string","enum":["approved","approved_with_notes","changes_requested"]},"overallRationale":{"type":"string","minLength":1,"maxLength":320}},"required":["summary","findings","securityChecklist","ccsCompliance","informational","strengths","overallAssessment","overallRationale"]}
 
     steps:
       - name: Prepare isolated Claude runtime
@@ -202,16 +202,51 @@ jobs:
         env:
           CONTRIBUTOR_SOURCE: ${{ needs.prepare.outputs.contributor_source }}
           BASE_REF: ${{ github.base_ref || 'dev' }}
+          USE_CHECKED_OUT_REVIEW_ASSETS: >-
+            ${{ github.event_name == 'workflow_dispatch' && needs.prepare.outputs.contributor_source == 'internal' && '1' || '' }}
         run: |
-          # Always load prompt from base branch to prevent PR-controlled prompt injection.
-          # External PRs could modify review-prompt.md to suppress security findings.
           PROMPT_CONTENT=""
-          git fetch origin "$BASE_REF" --depth=1 2>/dev/null || true
-          PROMPT_CONTENT=$(git show "origin/${BASE_REF}:.github/review-prompt.md" 2>/dev/null || echo "")
+          if [ -n "$USE_CHECKED_OUT_REVIEW_ASSETS" ]; then
+            # workflow_dispatch on an internal PR is the trusted pre-merge replay path.
+            # Use the checked-out branch assets so maintainers can verify the exact formatter under test.
+            PROMPT_CONTENT=$(cat .github/review-prompt.md 2>/dev/null || echo "")
+          else
+            # pull_request_target and issue_comment must stay pinned to the base branch to prevent prompt injection.
+            git fetch origin "$BASE_REF" --depth=1 2>/dev/null || true
+            PROMPT_CONTENT=$(git show "origin/${BASE_REF}:.github/review-prompt.md" 2>/dev/null || echo "")
+          fi
           if [ -z "$PROMPT_CONTENT" ]; then
             echo "::warning::.github/review-prompt.md not found on base branch ${BASE_REF} — using fallback"
             PROMPT_CONTENT="You are a red-team code reviewer. Find every way this code can fail, be exploited, or produce incorrect results. Flag security issues, logic errors, missing error handling, race conditions, and injection risks. Follow the repository CLAUDE.md for project-specific guidelines. Output findings grouped by severity: High (must fix), Medium (should fix), Low (track). Use strict approval criteria."
           fi
+
+          NORMALIZER_PATH="$RUNNER_TEMP/normalize-ai-review-output.mjs"
+          if [ -n "$USE_CHECKED_OUT_REVIEW_ASSETS" ]; then
+            cp scripts/github/normalize-ai-review-output.mjs "$NORMALIZER_PATH"
+          elif ! git show "origin/${BASE_REF}:scripts/github/normalize-ai-review-output.mjs" > "$NORMALIZER_PATH" 2>/dev/null; then
+            echo "::warning::scripts/github/normalize-ai-review-output.mjs not found on base branch ${BASE_REF} — using safe fallback normalizer"
+            printf '%s\n' \
+              "import fs from 'node:fs';" \
+              "" \
+              "const outputFile = process.env.AI_REVIEW_OUTPUT_FILE || 'pr_review.md';" \
+              "const model = process.env.AI_REVIEW_MODEL || 'unknown-model';" \
+              "const runUrl = process.env.AI_REVIEW_RUN_URL || '#';" \
+              "const content = [" \
+              "  '### ⚠️ AI Review Incomplete'," \
+              "  ''," \
+              "  'The trusted base-branch normalizer was unavailable, so this workflow skipped rendering any PR-controlled review output.'," \
+              "  ''," \
+              "  '- Reason: trusted normalizer missing on base branch'," \
+              "  ''," \
+              "  \`Re-run \\\`/review\\\` or inspect [the workflow run](\${runUrl}).\`," \
+              "  ''," \
+              "  \`> 🤖 Reviewed by \\\`\${model}\\\`\`," \
+              "].join('\\n');" \
+              "fs.writeFileSync(outputFile, \`\${content}\\n\`, 'utf8');" \
+              > "$NORMALIZER_PATH"
+          fi
+          echo "AI_REVIEW_NORMALIZER=$NORMALIZER_PATH" >> "$GITHUB_ENV"
+
           DELIMITER="REVIEW_PROMPT_$(openssl rand -hex 16)"
           {
             echo "content<<${DELIMITER}"
@@ -264,7 +299,7 @@ jobs:
       - name: Render review comment
         if: always() && steps.claude-review.outcome != 'cancelled'
         run: |
-          node scripts/github/normalize-ai-review-output.mjs
+          node "$AI_REVIEW_NORMALIZER"
         env:
           AI_REVIEW_EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
           AI_REVIEW_MODEL: ${{ env.REVIEW_MODEL }}

@@ -15,12 +15,26 @@ const SEVERITY_HEADERS = {
   low: '### 🟢 Low',
 };
 
+const STATUS_LABELS = {
+  pass: '✅',
+  fail: '⚠️',
+  na: 'N/A',
+};
+
+const RENDERER_OWNED_MARKUP_PATTERNS = [
+  { pattern: /^#{1,6}\s/u, reason: 'markdown heading' },
+  { pattern: /^\s*Verdict\s*:/iu, reason: 'verdict label' },
+  { pattern: /^\s*PR\s*#?\d+\s*Review(?:\s*[:.-]|$)/iu, reason: 'ad hoc PR heading' },
+  { pattern: /\|\s*[-:]+\s*\|/u, reason: 'markdown table' },
+  { pattern: /```/u, reason: 'code fence' },
+];
+
 function cleanText(value) {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
 }
 
 function escapeMarkdownText(value) {
-  return cleanText(value).replace(/\\/g, '\\\\').replace(/([`*_{}\[\]<>])/g, '\\$1');
+  return cleanText(value).replace(/\\/g, '\\\\').replace(/([`*_{}[\]<>|])/g, '\\$1');
 }
 
 function renderCode(value) {
@@ -28,6 +42,63 @@ function renderCode(value) {
   const longestFence = Math.max(...[...text.matchAll(/`+/g)].map((match) => match[0].length), 0);
   const fence = '`'.repeat(longestFence + 1);
   return `${fence}${text}${fence}`;
+}
+
+function validatePlainTextField(fieldName, value) {
+  const text = cleanText(value);
+  if (!text) {
+    return { ok: false, reason: `${fieldName} is required` };
+  }
+
+  const match = RENDERER_OWNED_MARKUP_PATTERNS.find(({ pattern }) => pattern.test(text));
+  if (match) {
+    return { ok: false, reason: `${fieldName} contains ${match.reason}` };
+  }
+
+  return { ok: true, value: text };
+}
+
+function normalizeStringList(fieldName, raw) {
+  if (!Array.isArray(raw)) {
+    return { ok: false, reason: `${fieldName} must be an array` };
+  }
+
+  const values = [];
+  for (const [index, item] of raw.entries()) {
+    const validation = validatePlainTextField(`${fieldName}[${index}]`, item);
+    if (!validation.ok) return validation;
+    values.push(validation.value);
+  }
+
+  return { ok: true, value: values };
+}
+
+function normalizeChecklistRows(fieldName, labelField, raw) {
+  if (!Array.isArray(raw)) {
+    return { ok: false, reason: `${fieldName} must be an array` };
+  }
+
+  const rows = [];
+  for (const [index, item] of raw.entries()) {
+    const label = validatePlainTextField(`${fieldName}[${index}].${labelField}`, item?.[labelField]);
+    if (!label.ok) return label;
+
+    const notes = validatePlainTextField(`${fieldName}[${index}].notes`, item?.notes);
+    if (!notes.ok) return notes;
+
+    const status = cleanText(item?.status).toLowerCase();
+    if (!STATUS_LABELS[status]) {
+      return { ok: false, reason: `${fieldName}[${index}].status is invalid` };
+    }
+
+    rows.push({ [labelField]: label.value, status, notes: notes.value });
+  }
+
+  if (rows.length === 0) {
+    return { ok: false, reason: `${fieldName} must contain at least 1 item` };
+  }
+
+  return { ok: true, value: rows };
 }
 
 function readExecutionMetadata(executionFile) {
@@ -64,50 +135,106 @@ export function normalizeStructuredOutput(raw) {
     return { ok: false, reason: 'structured output must be an object' };
   }
 
-  const summary = cleanText(parsed.summary);
-  const overallAssessment = cleanText(parsed.overallAssessment);
-  const overallRationale = cleanText(parsed.overallRationale);
-  const notes = Array.isArray(parsed.notes) ? parsed.notes.map(cleanText).filter(Boolean) : [];
-  const findings = Array.isArray(parsed.findings) ? parsed.findings : null;
+  const summary = validatePlainTextField('summary', parsed.summary);
+  if (!summary.ok) return summary;
 
-  if (!summary || !ASSESSMENTS[overallAssessment] || !overallRationale || findings === null) {
+  const overallAssessment = cleanText(parsed.overallAssessment).toLowerCase();
+  const overallRationale = validatePlainTextField('overallRationale', parsed.overallRationale);
+  if (!overallRationale.ok) return overallRationale;
+
+  const findings = Array.isArray(parsed.findings) ? parsed.findings : null;
+  const securityChecklist = normalizeChecklistRows('securityChecklist', 'check', parsed.securityChecklist);
+  if (!securityChecklist.ok) return securityChecklist;
+
+  const ccsCompliance = normalizeChecklistRows('ccsCompliance', 'rule', parsed.ccsCompliance);
+  if (!ccsCompliance.ok) return ccsCompliance;
+
+  const informational = normalizeStringList('informational', parsed.informational);
+  if (!informational.ok) return informational;
+
+  const strengths = normalizeStringList('strengths', parsed.strengths);
+  if (!strengths.ok) return strengths;
+
+  if (!ASSESSMENTS[overallAssessment] || findings === null) {
     return { ok: false, reason: 'structured output is missing required review fields' };
   }
 
   const normalizedFindings = [];
-  for (const finding of findings) {
-    const severity = cleanText(finding?.severity);
-    const title = cleanText(finding?.title);
-    const file = cleanText(finding?.file);
-    const what = cleanText(finding?.what);
-    const why = cleanText(finding?.why);
-    const fix = cleanText(finding?.fix);
-    const line =
-      typeof finding?.line === 'number' && Number.isInteger(finding.line) && finding.line > 0
-        ? finding.line
-        : null;
+  for (const [index, finding] of findings.entries()) {
+    const severity = cleanText(finding?.severity).toLowerCase();
+    const title = validatePlainTextField(`findings[${index}].title`, finding?.title);
+    if (!title.ok) return title;
 
-    if (!SEVERITY_HEADERS[severity] || !title || !file || !what || !why || !fix) {
-      return { ok: false, reason: 'structured output contains an invalid finding' };
+    const file = validatePlainTextField(`findings[${index}].file`, finding?.file);
+    if (!file.ok) return file;
+
+    const what = validatePlainTextField(`findings[${index}].what`, finding?.what);
+    if (!what.ok) return what;
+
+    const why = validatePlainTextField(`findings[${index}].why`, finding?.why);
+    if (!why.ok) return why;
+
+    const fix = validatePlainTextField(`findings[${index}].fix`, finding?.fix);
+    if (!fix.ok) return fix;
+
+    let line = null;
+    if (finding && Object.hasOwn(finding, 'line')) {
+      if (finding.line === null) {
+        line = null;
+      } else if (typeof finding.line === 'number' && Number.isInteger(finding.line) && finding.line > 0) {
+        line = finding.line;
+      } else {
+        return { ok: false, reason: `findings[${index}].line is invalid` };
+      }
     }
 
-    normalizedFindings.push({ severity, title, file, line, what, why, fix });
+    if (!SEVERITY_HEADERS[severity]) {
+      return { ok: false, reason: `findings[${index}].severity is invalid` };
+    }
+
+    normalizedFindings.push({
+      severity,
+      title: title.value,
+      file: file.value,
+      line,
+      what: what.value,
+      why: why.value,
+      fix: fix.value,
+    });
   }
 
   return {
     ok: true,
     value: {
-      summary,
+      summary: summary.value,
       findings: normalizedFindings,
       overallAssessment,
-      overallRationale,
-      notes,
+      overallRationale: overallRationale.value,
+      securityChecklist: securityChecklist.value,
+      ccsCompliance: ccsCompliance.value,
+      informational: informational.value,
+      strengths: strengths.value,
     },
   };
 }
 
+function renderChecklistTable(title, labelHeader, labelKey, rows) {
+  const lines = ['', title, '', `| ${labelHeader} | Status | Notes |`, '|---|---|---|'];
+  for (const row of rows) {
+    lines.push(
+      `| ${escapeMarkdownText(row[labelKey])} | ${STATUS_LABELS[row.status]} | ${escapeMarkdownText(row.notes)} |`
+    );
+  }
+  return lines;
+}
+
+function renderBulletSection(title, items) {
+  if (items.length === 0) return [];
+  return ['', title, ...items.map((item) => `- ${escapeMarkdownText(item)}`)];
+}
+
 export function renderStructuredReview(review, { model }) {
-  const lines = ['## Summary', escapeMarkdownText(review.summary), '', '## Findings'];
+  const lines = ['### 📋 Summary', '', escapeMarkdownText(review.summary), '', '### 🔍 Findings'];
 
   if (review.findings.length === 0) {
     lines.push('No confirmed issues found after reviewing the diff and surrounding code.');
@@ -116,34 +243,31 @@ export function renderStructuredReview(review, { model }) {
       const findings = review.findings.filter((finding) => finding.severity === severity);
       if (findings.length === 0) continue;
 
-      lines.push(SEVERITY_HEADERS[severity]);
+      lines.push('', SEVERITY_HEADERS[severity], '');
       for (const finding of findings) {
         const location = finding.line ? `${finding.file}:${finding.line}` : finding.file;
         lines.push(`- **${renderCode(location)} — ${escapeMarkdownText(finding.title)}**`);
         lines.push(`  Problem: ${escapeMarkdownText(finding.what)}`);
         lines.push(`  Why it matters: ${escapeMarkdownText(finding.why)}`);
         lines.push(`  Suggested fix: ${escapeMarkdownText(finding.fix)}`);
+        lines.push('');
       }
-      lines.push('');
     }
-    if (lines[lines.length - 1] === '') {
-      lines.pop();
-    }
+    if (lines[lines.length - 1] === '') lines.pop();
   }
 
-  if (review.notes.length > 0) {
-    lines.push('', '## Notes');
-    for (const note of review.notes) {
-      lines.push(`- ${escapeMarkdownText(note)}`);
-    }
-  }
+  lines.push(...renderChecklistTable('### 🔒 Security Checklist', 'Check', 'check', review.securityChecklist));
+  lines.push(...renderChecklistTable('### 📊 CCS Compliance', 'Rule', 'rule', review.ccsCompliance));
+  lines.push(...renderBulletSection('### 💡 Informational', review.informational));
+  lines.push(...renderBulletSection("### ✅ What's Done Well", review.strengths));
 
   lines.push(
     '',
-    '## Overall Assessment',
+    '### 🎯 Overall Assessment',
+    '',
     `**${ASSESSMENTS[review.overallAssessment]}** — ${escapeMarkdownText(review.overallRationale)}`,
     '',
-    `> Reviewed by \`${model}\``
+    `> 🤖 Reviewed by \`${model}\``
   );
 
   return lines.join('\n');
@@ -151,7 +275,7 @@ export function renderStructuredReview(review, { model }) {
 
 export function renderIncompleteReview({ model, reason, runUrl, runtimeTools, turnsUsed }) {
   const lines = [
-    '## AI Review Incomplete',
+    '### ⚠️ AI Review Incomplete',
     '',
     'Claude did not return validated structured review output, so this workflow did not publish raw scratch text.',
     '',
@@ -165,7 +289,7 @@ export function renderIncompleteReview({ model, reason, runUrl, runtimeTools, tu
     lines.push(`- Turns used: ${turnsUsed}`);
   }
 
-  lines.push('', `Re-run \`/review\` or inspect [the workflow run](${runUrl}).`, '', `> Reviewed by \`${model}\``);
+  lines.push('', `Re-run \`/review\` or inspect [the workflow run](${runUrl}).`, '', `> 🤖 Reviewed by \`${model}\``);
   return lines.join('\n');
 }
 
