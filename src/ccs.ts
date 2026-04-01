@@ -33,7 +33,7 @@ import {
 } from './utils/websearch-manager';
 import { getGlobalEnvConfig, getOfficialChannelsConfig } from './config/unified-config-loader';
 import { ensureProfileHooks as ensureImageAnalyzerHooks } from './utils/hooks/image-analyzer-profile-hook-injector';
-import { getImageAnalysisHookEnv } from './utils/hooks';
+import { getImageAnalysisHookEnv, installImageAnalyzerHook } from './utils/hooks';
 import { fail, info, warn } from './utils/ui';
 import { isCopilotSubcommandToken } from './copilot/constants';
 import {
@@ -682,10 +682,15 @@ async function main(): Promise<void> {
       if (resolvedTarget === 'claude') {
         ensureWebSearchMcpOrThrow();
       }
-      // Inject Image Analyzer hook into profile settings before launch
-      ensureImageAnalyzerHooks(profileInfo.name);
-
       const provider = profileInfo.provider || (profileInfo.name as CLIProxyProvider);
+      // Inject Image Analyzer hook into profile settings before launch
+      ensureImageAnalyzerHooks({
+        profileName: profileInfo.name,
+        profileType: profileInfo.type,
+        cliproxyProvider: provider,
+        isComposite: profileInfo.isComposite,
+        settingsPath: profileInfo.settingsPath ? expandPath(profileInfo.settingsPath) : undefined,
+      });
       const customSettingsPath = profileInfo.settingsPath; // undefined for hardcoded profiles
       const variantPort = profileInfo.port; // variant-specific port for isolation
       const cliproxyPort = variantPort || CLIPROXY_DEFAULT_PORT;
@@ -839,8 +844,12 @@ async function main(): Promise<void> {
     } else if (profileInfo.type === 'copilot') {
       // COPILOT FLOW: GitHub Copilot subscription via copilot-api proxy
       ensureWebSearchMcpOrThrow();
+      installImageAnalyzerHook();
       // Inject Image Analyzer hook into profile settings before launch
-      ensureImageAnalyzerHooks(profileInfo.name);
+      ensureImageAnalyzerHooks({
+        profileName: profileInfo.name,
+        profileType: profileInfo.type,
+      });
 
       const { executeCopilotProfile } = await import('./copilot');
       const copilotConfig = profileInfo.copilotConfig;
@@ -871,9 +880,8 @@ async function main(): Promise<void> {
       // Settings-based profiles (glm, glmt) are third-party providers
       if (resolvedTarget === 'claude') {
         ensureWebSearchMcpOrThrow();
+        installImageAnalyzerHook();
       }
-      // Inject Image Analyzer hook into profile settings before launch
-      ensureImageAnalyzerHooks(profileInfo.name);
 
       // Display WebSearch status (single line, equilibrium UX)
       displayWebSearchStatus();
@@ -902,6 +910,13 @@ async function main(): Promise<void> {
           : getSettingsPath(profileInfo.name));
       const settings = resolvedSettings ?? loadSettings(expandedSettingsPath);
       const cliproxyBridge = resolvedCliproxyBridge ?? resolveCliproxyBridgeMetadata(settings);
+      ensureImageAnalyzerHooks({
+        profileName: profileInfo.name,
+        profileType: profileInfo.type,
+        settingsPath: expandedSettingsPath,
+        settings,
+        cliproxyBridge,
+      });
       if (resolvedTarget !== 'claude') {
         const compatibility = evaluateTargetRuntimeCompatibility({
           target: resolvedTarget,
@@ -998,7 +1013,12 @@ async function main(): Promise<void> {
       }
 
       const webSearchEnv = getWebSearchHookEnv();
-      const imageAnalysisEnv = getImageAnalysisHookEnv(profileInfo.name);
+      const imageAnalysisEnv = getImageAnalysisHookEnv({
+        profileName: profileInfo.name,
+        profileType: profileInfo.type,
+        settings,
+        cliproxyBridge,
+      });
       // Get global env vars (DISABLE_TELEMETRY, etc.) for third-party profiles
       const globalEnvConfig = getGlobalEnvConfig();
       const globalEnv = globalEnvConfig.enabled ? globalEnvConfig.env : {};

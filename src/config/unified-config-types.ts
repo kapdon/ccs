@@ -759,6 +759,10 @@ export interface ImageAnalysisConfig {
   timeout: number;
   /** Provider-to-model mapping for vision analysis */
   provider_models: Record<string, string>;
+  /** Fallback backend used when a profile does not resolve to a provider-specific backend */
+  fallback_backend?: string;
+  /** Explicit profile-name-to-backend overrides for settings/custom aliases */
+  profile_backends?: Record<string, string>;
 }
 
 /**
@@ -780,6 +784,8 @@ export const DEFAULT_IMAGE_ANALYSIS_CONFIG: ImageAnalysisConfig = {
     iflow: 'qwen3-vl-plus',
     kimi: 'vision-model',
   },
+  fallback_backend: 'gemini',
+  profile_backends: {},
 };
 
 /**

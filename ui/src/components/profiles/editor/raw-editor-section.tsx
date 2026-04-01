@@ -6,7 +6,9 @@
 import { Suspense, lazy } from 'react';
 import { Loader2, X, AlertTriangle } from 'lucide-react';
 import { GlobalEnvIndicator } from '@/components/shared/global-env-indicator';
+import { ImageAnalysisStatusSection } from './image-analysis-status-section';
 import type { Settings } from './types';
+import type { ImageAnalysisStatus } from '@/lib/api-client';
 
 // Lazy load CodeEditor
 const CodeEditor = lazy(() =>
@@ -18,6 +20,7 @@ interface RawEditorSectionProps {
   isRawJsonValid: boolean;
   rawJsonEdits: string | null;
   settings: Settings | undefined;
+  imageAnalysisStatus?: ImageAnalysisStatus | null;
   onChange: (value: string) => void;
   missingRequiredFields?: string[];
 }
@@ -27,6 +30,7 @@ export function RawEditorSection({
   isRawJsonValid,
   rawJsonEdits,
   settings,
+  imageAnalysisStatus,
   onChange,
   missingRequiredFields = [],
 }: RawEditorSectionProps) {
@@ -74,6 +78,9 @@ export function RawEditorSection({
               heightMode="fill-parent"
             />
           </div>
+        </div>
+        <div className="mx-6 mb-4">
+          <ImageAnalysisStatusSection status={imageAnalysisStatus} />
         </div>
         {/* Global Env Indicator */}
         <div className="mx-6 mb-4">

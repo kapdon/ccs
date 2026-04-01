@@ -165,7 +165,10 @@ export async function executeCopilotProfile(
 
   // Merge with current environment (global env first, copilot overrides, then hook env vars)
   const webSearchEnv = getWebSearchHookEnv();
-  const imageAnalysisEnv = getImageAnalysisHookEnv('copilot');
+  const imageAnalysisEnv = getImageAnalysisHookEnv({
+    profileName: 'copilot',
+    profileType: 'copilot',
+  });
   const env = stripClaudeCodeEnv({
     ...process.env,
     ...globalEnv,

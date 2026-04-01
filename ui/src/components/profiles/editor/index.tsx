@@ -254,6 +254,7 @@ export function ProfileEditor({
               isRawJsonValid={computedIsRawJsonValid}
               rawJsonEdits={rawJsonEdits}
               settings={settings}
+              imageAnalysisStatus={data?.imageAnalysisStatus}
               onChange={handleRawJsonChange}
               missingRequiredFields={missingRequiredFields}
             />

@@ -8,6 +8,13 @@
 
 export { getImageAnalysisHookEnv } from './get-image-analysis-hook-env';
 export {
+  canonicalizeImageAnalysisConfig,
+  resolveImageAnalysisStatus,
+  normalizeImageAnalysisBackendId,
+  type ImageAnalysisResolutionContext,
+  type ImageAnalysisStatus,
+} from './image-analysis-backend-resolver';
+export {
   getImageAnalyzerHookPath,
   getImageAnalyzerHookConfig,
   hasImageAnalyzerHook,
