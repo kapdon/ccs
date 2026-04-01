@@ -1,3 +1,47 @@
+## [7.64.0](https://github.com/kaitranntt/ccs/compare/v7.63.1...v7.64.0) (2026-04-01)
+
+### Features
+
+* add first-class CCS WebSearch runtime ([e260df7](https://github.com/kaitranntt/ccs/commit/e260df7178dd030efe3d490b4cd9421b386c43c2))
+* **cliproxy:** support duplicate-email codex accounts ([c73f338](https://github.com/kaitranntt/ccs/commit/c73f33872abc165aaaba8a240c06cc4ccbb6f5b4))
+* **ui:** unify duplicate-email account surfaces ([80341f1](https://github.com/kaitranntt/ccs/commit/80341f18c3c93dd4cdca92f6965136cff90be6f7))
+* **websearch:** add managed mcp runtime and provider cooldowns ([7f83e04](https://github.com/kaitranntt/ccs/commit/7f83e041b7fa8907a5d9484acd21ea88edac67e7))
+* **websearch:** finish managed third-party rollout ([de7171d](https://github.com/kaitranntt/ccs/commit/de7171d81076ecfd4e5e6474ce062c44a4c8be9a)), closes [#862](https://github.com/kaitranntt/ccs/issues/862)
+
+### Bug Fixes
+
+* bootstrap explicit CODEX_HOME for ccsxp ([b6717c5](https://github.com/kaitranntt/ccs/commit/b6717c55295dadeeff87ec356bc19d7b1b1d3733))
+* **ci:** harden ai review output ([4950be7](https://github.com/kaitranntt/ccs/commit/4950be7fc025877dd6744b9c8c87b4714ec49de2))
+* **codex:** harden duplicate-email account actions ([22f0916](https://github.com/kaitranntt/ccs/commit/22f091689fadf485d24fc46510f211a489680a2b))
+* **codex:** harden native runtime detection ([ca54bad](https://github.com/kaitranntt/ccs/commit/ca54bad2aa774c9dc3de9429d3e1440d179796a7))
+* **dashboard:** use shared base time for connection timeline events ([d76ef5b](https://github.com/kaitranntt/ccs/commit/d76ef5bcb30bd87ea487894586978473fcc8fead)), closes [#856](https://github.com/kaitranntt/ccs/issues/856)
+* **docker:** harden cliproxy local proxy with auth guard, dynamic port, and body handling ([6471cc5](https://github.com/kaitranntt/ccs/commit/6471cc55d72deeebcbca70d54983b90ae32c999a))
+* **docker:** harden proxy with timeout, Bun compat, and test coverage ([27409b7](https://github.com/kaitranntt/ccs/commit/27409b789b29a1d008f621f55aab7eed9861d6d4))
+* **docker:** proxy CLIProxy management panel through dashboard to avoid cross-origin errors ([881b061](https://github.com/kaitranntt/ccs/commit/881b061dfec497d7120b15d2045cf8e1a8f04bcc))
+* harden ai review comment formatting ([fa37f39](https://github.com/kaitranntt/ccs/commit/fa37f391c17c51c74a5bfe109225caf01798dc96))
+* merge existing disallowed tool flags for websearch ([b087c02](https://github.com/kaitranntt/ccs/commit/b087c02738c7e588491f84c8f2318c2ef5b03eca))
+* normalize websearch hook output for local providers ([a5d71e3](https://github.com/kaitranntt/ccs/commit/a5d71e35606ebaf16f97d860405800e9a9454659))
+* probe Codex config override support directly ([014a844](https://github.com/kaitranntt/ccs/commit/014a844844c76fe5dfce7763ed62e071ee063f58))
+* **ui:** normalize grouped account audience order ([498448a](https://github.com/kaitranntt/ccs/commit/498448a43181280dc06035d80b694f7522a1b28a))
+* use type-only import in instance manager ([f0cd44e](https://github.com/kaitranntt/ccs/commit/f0cd44e016c2c4a33ad06edcf6b13d8cbf1920bf))
+* **websearch:** close review gaps in managed runtime ([cae5b71](https://github.com/kaitranntt/ccs/commit/cae5b710b86a6bd985424cce028a502265051d09))
+
+### Hotfixes
+
+* restore prepack packaging contract ([78f6c5d](https://github.com/kaitranntt/ccs/commit/78f6c5d7156e1fb447e523b355c302a45d5b71bd))
+
+### Documentation
+
+* **architecture:** document codex duplicate-email identity ([be0c597](https://github.com/kaitranntt/ccs/commit/be0c597d255a21a7e935f033dfcc4de4e19c8c8e))
+
+### Code Refactoring
+
+* remove duplicate copilot websearch sync ([2c15304](https://github.com/kaitranntt/ccs/commit/2c153045f33e02cc821a623f6594fb4a6bebb321))
+
+### Tests
+
+* **dashboard:** add regression tests for connection timeline event generation ([4ab5194](https://github.com/kaitranntt/ccs/commit/4ab51945a412321e3e56d0c6860d0121761dcbfa))
+
 ## [7.63.1](https://github.com/kaitranntt/ccs/compare/v7.63.0...v7.63.1) (2026-04-01)
 
 ### Hotfixes
