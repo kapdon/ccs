@@ -472,8 +472,30 @@ export const MODEL_CATALOGS: Record<string, ProviderCatalog> = {
   kiro: {
     provider: 'kiro',
     displayName: 'Kiro (AWS)',
-    defaultModel: 'kiro-claude-sonnet-4-5',
+    defaultModel: 'kiro-claude-sonnet-4-6',
     models: [
+      {
+        id: 'kiro-claude-opus-4-6',
+        name: 'Kiro Claude Opus 4.6',
+        description: 'Claude Opus 4.6 via Kiro (2.2x credit)',
+        presetMapping: {
+          default: 'kiro-claude-opus-4-6',
+          opus: 'kiro-claude-opus-4-6',
+          sonnet: 'kiro-claude-sonnet-4-6',
+          haiku: 'kiro-claude-haiku-4-5',
+        },
+      },
+      {
+        id: 'kiro-claude-sonnet-4-6',
+        name: 'Kiro Claude Sonnet 4.6',
+        description: 'Claude Sonnet 4.6 via Kiro (1.3x credit)',
+        presetMapping: {
+          default: 'kiro-claude-sonnet-4-6',
+          opus: 'kiro-claude-opus-4-6',
+          sonnet: 'kiro-claude-sonnet-4-6',
+          haiku: 'kiro-claude-haiku-4-5',
+        },
+      },
       {
         id: 'kiro-claude-opus-4-5',
         name: 'Kiro Claude Opus 4.5',
