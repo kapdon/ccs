@@ -35,12 +35,19 @@ const RENDERER_OWNED_MARKUP_PATTERNS = [
   { pattern: /```/u, reason: 'code fence' },
 ];
 
+const INLINE_CODE_TOKEN_PATTERN =
+  /\b[A-Za-z_][A-Za-z0-9_.]*\([^()\n]*\)|(?<![\w`])\.?[\w-]+(?:\/[\w.-]+)+\.[\w.-]+(?::\d+)?|\b[\w.-]+\/[\w.-]+@[\w.-]+\b|--[a-z0-9][a-z0-9-]*\b|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/gu;
+
 function cleanText(value) {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
 }
 
+function escapeMarkdown(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/([`*_{}[\]<>|])/g, '\\$1');
+}
+
 function escapeMarkdownText(value) {
-  return cleanText(value).replace(/\\/g, '\\\\').replace(/([`*_{}[\]<>|])/g, '\\$1');
+  return escapeMarkdown(cleanText(value));
 }
 
 function renderCode(value) {
@@ -48,6 +55,30 @@ function renderCode(value) {
   const longestFence = Math.max(...[...text.matchAll(/`+/g)].map((match) => match[0].length), 0);
   const fence = '`'.repeat(longestFence + 1);
   return `${fence}${text}${fence}`;
+}
+
+function renderInlineText(value) {
+  const text = cleanText(value);
+  if (!text) {
+    return '';
+  }
+
+  let rendered = '';
+  let lastIndex = 0;
+  for (const match of text.matchAll(INLINE_CODE_TOKEN_PATTERN)) {
+    const token = match[0];
+    const index = match.index ?? 0;
+    if (index < lastIndex) {
+      continue;
+    }
+
+    rendered += escapeMarkdown(text.slice(lastIndex, index));
+    rendered += renderCode(token);
+    lastIndex = index + token.length;
+  }
+
+  rendered += escapeMarkdown(text.slice(lastIndex));
+  return rendered;
 }
 
 function parsePositiveInteger(value) {
@@ -490,7 +521,7 @@ function renderChecklistTable(title, labelHeader, labelKey, rows) {
   const lines = ['', title, '', `| ${labelHeader} | Status | Notes |`, '|---|---|---|'];
   for (const row of rows) {
     lines.push(
-      `| ${escapeMarkdownText(row[labelKey])} | ${STATUS_LABELS[row.status]} | ${escapeMarkdownText(row.notes)} |`
+      `| ${renderInlineText(row[labelKey])} | ${STATUS_LABELS[row.status]} | ${renderInlineText(row.notes)} |`
     );
   }
   return lines;
@@ -498,12 +529,12 @@ function renderChecklistTable(title, labelHeader, labelKey, rows) {
 
 function renderBulletSection(title, items) {
   if (items.length === 0) return [];
-  return ['', title, ...items.map((item) => `- ${escapeMarkdownText(item)}`)];
+  return ['', title, ...items.map((item) => `- ${renderInlineText(item)}`)];
 }
 
 export function renderStructuredReview(review, { model, rendering: renderOptions } = {}) {
   const rendering = mergeRenderingMetadata(review?.rendering, renderOptions);
-  const lines = ['### 📋 Summary', '', escapeMarkdownText(review.summary), '', '### 🔍 Findings'];
+  const lines = ['### 📋 Summary', '', renderInlineText(review.summary), '', '### 🔍 Findings'];
   const reviewContext = formatReviewContext(rendering);
 
   if (reviewContext) {
@@ -520,10 +551,10 @@ export function renderStructuredReview(review, { model, rendering: renderOptions
       lines.push('', SEVERITY_HEADERS[severity], '');
       for (const finding of findings) {
         const location = finding.line ? `${finding.file}:${finding.line}` : finding.file;
-        lines.push(`- **${renderCode(location)} — ${escapeMarkdownText(finding.title)}**`);
-        lines.push(`  Problem: ${escapeMarkdownText(finding.what)}`);
-        lines.push(`  Why it matters: ${escapeMarkdownText(finding.why)}`);
-        lines.push(`  Suggested fix: ${escapeMarkdownText(finding.fix)}`);
+        lines.push(`- **${renderCode(location)} — ${renderInlineText(finding.title)}**`);
+        lines.push(`  Problem: ${renderInlineText(finding.what)}`);
+        lines.push(`  Why it matters: ${renderInlineText(finding.why)}`);
+        lines.push(`  Suggested fix: ${renderInlineText(finding.fix)}`);
         lines.push('');
       }
     }
@@ -539,7 +570,7 @@ export function renderStructuredReview(review, { model, rendering: renderOptions
     '',
     '### 🎯 Overall Assessment',
     '',
-    `**${ASSESSMENTS[review.overallAssessment]}** — ${escapeMarkdownText(review.overallRationale)}`,
+    `**${ASSESSMENTS[review.overallAssessment]}** — ${renderInlineText(review.overallRationale)}`,
     '',
     `> 🤖 Reviewed by \`${model}\``
   );

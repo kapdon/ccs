@@ -118,6 +118,56 @@ describe('normalize-ai-review-output', () => {
     expect(markdown).toContain('**⚠️ APPROVED WITH NOTES**');
   });
 
+  test('auto-formats code-like tokens while keeping markdown structure renderer-owned', () => {
+    const validation = reviewOutput.normalizeStructuredOutput(
+      JSON.stringify({
+        summary:
+          'buildReviewScope(files, mode) now feeds .github/workflows/ai-review.yml through workflow_dispatch with AI_REVIEW_PACKET_FILE and --max-turns coverage.',
+        findings: [
+          {
+            severity: 'medium',
+            title: 'pull_request_target fallback still references old_marker_path',
+            file: '.github/workflows/ai-review.yml',
+            line: 181,
+            what: 'The workflow_dispatch smoke test still leaves old_marker_path in one branch.',
+            why: 'That makes pull_request_target reruns harder to reason about for maintainers.',
+            fix: 'Rename old_marker_path and keep workflow_dispatch aligned with AI_REVIEW_PACKET_FILE.',
+          },
+        ],
+        securityChecklist: [
+          {
+            check: 'workflow_dispatch safety',
+            status: 'pass',
+            notes: 'workflow_dispatch stays scoped to .github/workflows/ai-review.yml only.',
+          },
+        ],
+        ccsCompliance: [
+          {
+            rule: 'Renderer-owned markdown',
+            status: 'pass',
+            notes: 'The normalizer still owns headings, tables, and code fences.',
+          },
+        ],
+        informational: ['Use --max-turns only for legacy fallbacks.'],
+        strengths: ['AI_REVIEW_PACKET_FILE now renders as code.'],
+        overallAssessment: 'approved_with_notes',
+        overallRationale:
+          'The renderer can format buildReviewScope(files, mode) and .github/workflows/ai-review.yml safely.',
+      })
+    );
+
+    expect(validation.ok).toBe(true);
+    const markdown = reviewOutput.renderStructuredReview(validation.value, { model: 'glm-5.1' });
+
+    expect(markdown).toContain('`buildReviewScope(files, mode)`');
+    expect(markdown).toContain('`.github/workflows/ai-review.yml`');
+    expect(markdown).toContain('`workflow_dispatch`');
+    expect(markdown).toContain('`AI_REVIEW_PACKET_FILE`');
+    expect(markdown).toContain('`--max-turns`');
+    expect(markdown).toContain('`pull_request_target`');
+    expect(markdown).toContain('`old_marker_path`');
+  });
+
   test('normalizes optional rendering metadata when present in structured output', () => {
     const validation = reviewOutput.normalizeStructuredOutput(
       JSON.stringify({
