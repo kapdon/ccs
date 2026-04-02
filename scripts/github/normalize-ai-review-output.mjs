@@ -21,6 +21,12 @@ const STATUS_LABELS = {
   na: 'N/A',
 };
 
+const REVIEW_MODE_DETAILS = {
+  fast: 'diff-focused bounded review',
+  triage: 'hotspot-based bounded review (non-exhaustive)',
+  deep: 'expanded surrounding-code review',
+};
+
 const RENDERER_OWNED_MARKUP_PATTERNS = [
   { pattern: /^#{1,6}\s/u, reason: 'markdown heading' },
   { pattern: /^\s*Verdict\s*:/iu, reason: 'verdict label' },
@@ -42,6 +48,171 @@ function renderCode(value) {
   const longestFence = Math.max(...[...text.matchAll(/`+/g)].map((match) => match[0].length), 0);
   const fence = '`'.repeat(longestFence + 1);
   return `${fence}${text}${fence}`;
+}
+
+function parsePositiveInteger(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number.parseInt(cleanText(value), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeReviewMode(value) {
+  const mode = cleanText(value).toLowerCase();
+  return REVIEW_MODE_DETAILS[mode] ? mode : null;
+}
+
+function normalizeRenderingMetadata(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {};
+  }
+
+  const mode = normalizeReviewMode(raw.mode);
+  const maxTurns = parsePositiveInteger(raw.maxTurns);
+  const timeoutMinutes = parsePositiveInteger(raw.timeoutMinutes);
+  const timeoutSeconds = parsePositiveInteger(raw.timeoutSeconds);
+  const selectedFiles = parsePositiveInteger(raw.selectedFiles);
+  const reviewableFiles = parsePositiveInteger(raw.reviewableFiles);
+  const selectedChanges = parsePositiveInteger(raw.selectedChanges);
+  const reviewableChanges = parsePositiveInteger(raw.reviewableChanges);
+  const scopeLabel = cleanText(raw.scopeLabel).toLowerCase();
+  const metadata = {};
+
+  if (mode) metadata.mode = mode;
+  if (maxTurns) metadata.maxTurns = maxTurns;
+  if (timeoutMinutes) metadata.timeoutMinutes = timeoutMinutes;
+  if (timeoutSeconds) metadata.timeoutSeconds = timeoutSeconds;
+  if (selectedFiles) metadata.selectedFiles = selectedFiles;
+  if (reviewableFiles) metadata.reviewableFiles = reviewableFiles;
+  if (selectedChanges) metadata.selectedChanges = selectedChanges;
+  if (reviewableChanges) metadata.reviewableChanges = reviewableChanges;
+  if (scopeLabel === 'reviewable files' || scopeLabel === 'changed files') metadata.scopeLabel = scopeLabel;
+
+  return metadata;
+}
+
+function mergeRenderingMetadata(...sources) {
+  const merged = {};
+  for (const source of sources) {
+    Object.assign(merged, normalizeRenderingMetadata(source));
+  }
+  return merged;
+}
+
+function formatTurnBudget(rendering) {
+  return typeof rendering.maxTurns === 'number' ? `${rendering.maxTurns} turns` : null;
+}
+
+function formatTimeBudget(rendering) {
+  if (typeof rendering.timeoutMinutes === 'number') {
+    return `${rendering.timeoutMinutes} minute${rendering.timeoutMinutes === 1 ? '' : 's'}`;
+  }
+
+  if (typeof rendering.timeoutSeconds === 'number') {
+    return `${rendering.timeoutSeconds} second${rendering.timeoutSeconds === 1 ? '' : 's'}`;
+  }
+
+  return null;
+}
+
+function formatCombinedBudget(rendering) {
+  const parts = [formatTurnBudget(rendering), formatTimeBudget(rendering)].filter(Boolean);
+  return parts.length > 0 ? parts.join(' / ') : null;
+}
+
+function formatScopeSummary(rendering) {
+  if (
+    typeof rendering.selectedFiles !== 'number' ||
+    typeof rendering.reviewableFiles !== 'number'
+  ) {
+    return null;
+  }
+
+  const scopeLabel = rendering.scopeLabel || 'reviewable files';
+  const fileScope = `${rendering.selectedFiles}/${rendering.reviewableFiles} ${scopeLabel}`;
+  if (
+    typeof rendering.selectedChanges === 'number' &&
+    typeof rendering.reviewableChanges === 'number'
+  ) {
+    const changeLabel = scopeLabel === 'reviewable files' ? 'reviewable changed lines' : 'changed lines';
+    return `${fileScope}; ${rendering.selectedChanges}/${rendering.reviewableChanges} ${changeLabel}`;
+  }
+
+  return fileScope;
+}
+
+function formatReviewContext(rendering) {
+  const parts = [];
+
+  if (rendering.mode) {
+    parts.push(`mode ${renderCode(rendering.mode)}`);
+    parts.push(REVIEW_MODE_DETAILS[rendering.mode]);
+  }
+
+  const scopeSummary = formatScopeSummary(rendering);
+  if (scopeSummary) {
+    parts.push(`scope ${scopeSummary}`);
+  }
+
+  const turnBudget = formatTurnBudget(rendering);
+  if (turnBudget) {
+    parts.push(`turn budget ${turnBudget}`);
+  }
+
+  const timeBudget = formatTimeBudget(rendering);
+  if (timeBudget) {
+    parts.push(`workflow cap ${timeBudget}`);
+  }
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return `> 🧭 Review context: ${parts.join('; ')}.`;
+}
+
+function classifyFallbackReason(reason) {
+  const normalized = cleanText(reason).toLowerCase();
+  if (!normalized || normalized === 'missing structured output') {
+    return 'missing';
+  }
+
+  if (normalized === 'structured output is not valid json') {
+    return 'invalid_json';
+  }
+
+  return 'invalid_fields';
+}
+
+function describeIncompleteOutcome({ reason, rendering, turnsUsed, status }) {
+  const reviewLabel = rendering.mode ? `${renderCode(rendering.mode)} review` : 'bounded review';
+  const turnBudget = formatTurnBudget(rendering);
+  const timeBudget = formatTimeBudget(rendering);
+  const combinedBudget = formatCombinedBudget(rendering);
+  const exhaustedTurnBudget =
+    typeof turnsUsed === 'number' &&
+    typeof rendering.maxTurns === 'number' &&
+    turnsUsed >= rendering.maxTurns;
+
+  if (status === 'cancelled' && timeBudget) {
+    return `The ${reviewLabel} hit the workflow runtime cap before it produced validated structured output. The run stayed bounded to ${timeBudget}.`;
+  }
+
+  if (exhaustedTurnBudget) {
+    return `The ${reviewLabel} reached its ${rendering.maxTurns}-turn runtime budget before it produced validated structured output.`;
+  }
+
+  if (combinedBudget && classifyFallbackReason(reason) === 'missing') {
+    return `The ${reviewLabel} ended before it could produce validated structured output within the available ${combinedBudget} runtime budget.`;
+  }
+
+  if (classifyFallbackReason(reason) === 'missing' || classifyFallbackReason(reason) === 'invalid_json') {
+    return `The ${reviewLabel} ended without validated structured output, so the normalizer published the safe fallback comment instead.`;
+  }
+
+  return `The ${reviewLabel} returned incomplete structured data, so the normalizer published the safe fallback comment instead.`;
 }
 
 function validatePlainTextField(fieldName, value) {
@@ -155,6 +326,8 @@ export function normalizeStructuredOutput(raw) {
   const strengths = normalizeStringList('strengths', parsed.strengths);
   if (!strengths.ok) return strengths;
 
+  const rendering = normalizeRenderingMetadata(parsed.rendering);
+
   if (!ASSESSMENTS[overallAssessment] || findings === null) {
     return { ok: false, reason: 'structured output is missing required review fields' };
   }
@@ -203,19 +376,22 @@ export function normalizeStructuredOutput(raw) {
     });
   }
 
-  return {
-    ok: true,
-    value: {
-      summary: summary.value,
-      findings: normalizedFindings,
-      overallAssessment,
-      overallRationale: overallRationale.value,
-      securityChecklist: securityChecklist.value,
-      ccsCompliance: ccsCompliance.value,
-      informational: informational.value,
-      strengths: strengths.value,
-    },
+  const value = {
+    summary: summary.value,
+    findings: normalizedFindings,
+    overallAssessment,
+    overallRationale: overallRationale.value,
+    securityChecklist: securityChecklist.value,
+    ccsCompliance: ccsCompliance.value,
+    informational: informational.value,
+    strengths: strengths.value,
   };
+
+  if (Object.keys(rendering).length > 0) {
+    value.rendering = rendering;
+  }
+
+  return { ok: true, value };
 }
 
 function renderChecklistTable(title, labelHeader, labelKey, rows) {
@@ -233,8 +409,14 @@ function renderBulletSection(title, items) {
   return ['', title, ...items.map((item) => `- ${escapeMarkdownText(item)}`)];
 }
 
-export function renderStructuredReview(review, { model }) {
+export function renderStructuredReview(review, { model, rendering: renderOptions } = {}) {
+  const rendering = mergeRenderingMetadata(review?.rendering, renderOptions);
   const lines = ['### 📋 Summary', '', escapeMarkdownText(review.summary), '', '### 🔍 Findings'];
+  const reviewContext = formatReviewContext(rendering);
+
+  if (reviewContext) {
+    lines.splice(4, 0, reviewContext, '');
+  }
 
   if (review.findings.length === 0) {
     lines.push('No confirmed issues found after reviewing the diff and surrounding code.');
@@ -273,15 +455,35 @@ export function renderStructuredReview(review, { model }) {
   return lines.join('\n');
 }
 
-export function renderIncompleteReview({ model, reason, runUrl, runtimeTools, turnsUsed }) {
+export function renderIncompleteReview({
+  model,
+  reason,
+  runUrl,
+  runtimeTools,
+  turnsUsed,
+  rendering: renderOptions,
+  status,
+}) {
+  const rendering = mergeRenderingMetadata(renderOptions);
   const lines = [
     '### ⚠️ AI Review Incomplete',
     '',
     'Claude did not return validated structured review output, so this workflow did not publish raw scratch text.',
     '',
-    `- Reason: ${escapeMarkdownText(reason)}`,
+    `- Outcome: ${describeIncompleteOutcome({ reason, rendering, turnsUsed, status })}`,
   ];
 
+  if (rendering.mode) {
+    lines.push(`- Review mode: ${renderCode(rendering.mode)} (${escapeMarkdownText(REVIEW_MODE_DETAILS[rendering.mode])})`);
+  }
+  const scopeSummary = formatScopeSummary(rendering);
+  if (scopeSummary) {
+    lines.push(`- Review scope: ${escapeMarkdownText(scopeSummary)}`);
+  }
+  const runtimeBudget = formatCombinedBudget(rendering);
+  if (runtimeBudget) {
+    lines.push(`- Runtime budget: ${escapeMarkdownText(runtimeBudget)}`);
+  }
   if (runtimeTools?.length) {
     lines.push(`- Runtime tools: ${runtimeTools.map(renderCode).join(', ')}`);
   }
@@ -299,14 +501,28 @@ export function writeReviewFromEnv(env = process.env) {
   const runUrl = env.AI_REVIEW_RUN_URL || '#';
   const validation = normalizeStructuredOutput(env.AI_REVIEW_STRUCTURED_OUTPUT);
   const metadata = readExecutionMetadata(env.AI_REVIEW_EXECUTION_FILE);
+  const status = cleanText(env.AI_REVIEW_STATUS).toLowerCase() || null;
+  const rendering = normalizeRenderingMetadata({
+    mode: env.AI_REVIEW_MODE,
+    selectedFiles: env.AI_REVIEW_SELECTED_FILES,
+    reviewableFiles: env.AI_REVIEW_REVIEWABLE_FILES,
+    selectedChanges: env.AI_REVIEW_SELECTED_CHANGES,
+    reviewableChanges: env.AI_REVIEW_REVIEWABLE_CHANGES,
+    scopeLabel: env.AI_REVIEW_SCOPE_LABEL,
+    maxTurns: env.AI_REVIEW_MAX_TURNS,
+    timeoutMinutes: env.AI_REVIEW_TIMEOUT_MINUTES ?? env.AI_REVIEW_TIMEOUT_MINUTES_BUDGET,
+    timeoutSeconds: env.AI_REVIEW_TIMEOUT_SECONDS ?? env.AI_REVIEW_TIMEOUT_SEC,
+  });
   const content = validation.ok
-    ? renderStructuredReview(validation.value, { model })
+    ? renderStructuredReview(validation.value, { model, rendering })
     : renderIncompleteReview({
         model,
         reason: validation.reason,
         runUrl,
         runtimeTools: metadata.runtimeTools,
         turnsUsed: metadata.turnsUsed,
+        rendering,
+        status,
       });
 
   fs.mkdirSync(path.dirname(outputFile), { recursive: true });

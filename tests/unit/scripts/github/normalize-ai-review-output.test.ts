@@ -69,7 +69,81 @@ describe('normalize-ai-review-output', () => {
     expect(markdown).toContain('> 🤖 Reviewed by `glm-5.1`');
   });
 
-  test('writes a safe incomplete comment instead of leaking raw assistant text', () => {
+  test('renders mode-aware review context metadata without changing the structured review contract', () => {
+    const validation = reviewOutput.normalizeStructuredOutput(
+      JSON.stringify({
+        summary: 'The large diff review stayed focused on the riskiest hotspots.',
+        findings: [],
+        securityChecklist: [
+          {
+            check: 'Workflow safety',
+            status: 'pass',
+            notes: 'The review stayed read-only and did not invoke write-capable tools.',
+          },
+        ],
+        ccsCompliance: [
+          {
+            rule: 'Plain structured output',
+            status: 'pass',
+            notes: 'The assistant returned data fields only, without layout markdown.',
+          },
+        ],
+        informational: [],
+        strengths: [],
+        overallAssessment: 'approved_with_notes',
+        overallRationale: 'The review stayed bounded and did not surface blocking regressions.',
+      })
+    );
+
+    expect(validation.ok).toBe(true);
+    const markdown = reviewOutput.renderStructuredReview(validation.value, {
+      model: 'glm-5.1',
+      rendering: {
+        mode: 'triage',
+        selectedFiles: 8,
+        reviewableFiles: 34,
+        selectedChanges: 620,
+        reviewableChanges: 2140,
+        maxTurns: 6,
+        timeoutMinutes: 5,
+      },
+    });
+
+    expect(markdown).toContain(
+      '> 🧭 Review context: mode `triage`; hotspot-based bounded review (non-exhaustive); scope 8/34 reviewable files; 620/2140 reviewable changed lines; turn budget 6 turns; workflow cap 5 minutes.'
+    );
+    expect(markdown).toContain('**⚠️ APPROVED WITH NOTES**');
+  });
+
+  test('normalizes optional rendering metadata when present in structured output', () => {
+    const validation = reviewOutput.normalizeStructuredOutput(
+      JSON.stringify({
+        summary: 'The maintainer review inspected surrounding code paths before approving.',
+        findings: [],
+        securityChecklist: [{ check: 'Injection safety', status: 'pass', notes: 'Covered.' }],
+        ccsCompliance: [{ rule: 'ASCII-only CLI output', status: 'pass', notes: 'Unaffected.' }],
+        informational: [],
+        strengths: [],
+        overallAssessment: 'approved',
+        overallRationale: 'No confirmed regressions remain.',
+        rendering: {
+          mode: 'deep',
+          maxTurns: 40,
+          timeoutSeconds: 120,
+          ignored: 'value',
+        },
+      })
+    );
+
+    expect(validation.ok).toBe(true);
+    expect(validation.value.rendering).toEqual({
+      mode: 'deep',
+      maxTurns: 40,
+      timeoutSeconds: 120,
+    });
+  });
+
+  test('writes a safe incomplete comment with mode and runtime context instead of leaking raw assistant text', () => {
     withTempDir('ai-review-', (tempDir) => {
       const executionFile = path.join(tempDir, 'claude-execution-output.json');
       const outputFile = path.join(tempDir, 'pr_review.md');
@@ -90,6 +164,13 @@ describe('normalize-ai-review-output', () => {
       const result = reviewOutput.writeReviewFromEnv({
         AI_REVIEW_EXECUTION_FILE: executionFile,
         AI_REVIEW_MODEL: 'glm-5.1',
+        AI_REVIEW_MODE: 'triage',
+        AI_REVIEW_SELECTED_FILES: '10',
+        AI_REVIEW_REVIEWABLE_FILES: '46',
+        AI_REVIEW_SELECTED_CHANGES: '700',
+        AI_REVIEW_REVIEWABLE_CHANGES: '2310',
+        AI_REVIEW_MAX_TURNS: '25',
+        AI_REVIEW_TIMEOUT_MINUTES: '5',
         AI_REVIEW_OUTPUT_FILE: outputFile,
         AI_REVIEW_RUN_URL: 'https://github.com/kaitranntt/ccs/actions/runs/23758377592',
         AI_REVIEW_STRUCTURED_OUTPUT: '',
@@ -99,9 +180,62 @@ describe('normalize-ai-review-output', () => {
 
       const markdown = fs.readFileSync(outputFile, 'utf8');
       expect(markdown).toContain('### ⚠️ AI Review Incomplete');
+      expect(markdown).toContain(
+        'The `triage` review reached its 25-turn runtime budget before it produced validated structured output.'
+      );
+      expect(markdown).toContain('- Review mode: `triage` (hotspot-based bounded review (non-exhaustive))');
+      expect(markdown).toContain('- Review scope: 10/46 reviewable files; 700/2310 reviewable changed lines');
+      expect(markdown).toContain('- Runtime budget: 25 turns / 5 minutes');
       expect(markdown).toContain('Runtime tools: `Bash`, `Edit`, `Read`');
       expect(markdown).toContain('Turns used: 25');
       expect(markdown).not.toContain('Now let me verify the findings');
+    });
+  });
+
+  test('uses a timeout-safe fallback message when the bounded review hits the workflow cap', () => {
+    withTempDir('ai-review-', (tempDir) => {
+      const executionFile = path.join(tempDir, 'claude-execution-output.json');
+      const outputFile = path.join(tempDir, 'pr_review.md');
+
+      fs.writeFileSync(
+        executionFile,
+        JSON.stringify([
+          { type: 'system', subtype: 'init', tools: ['Read'] },
+          {
+            type: 'result',
+            subtype: 'success',
+            num_turns: 7,
+            result: 'Partial draft that should never reach the published markdown.',
+          },
+        ])
+      );
+
+      const result = reviewOutput.writeReviewFromEnv({
+        AI_REVIEW_EXECUTION_FILE: executionFile,
+        AI_REVIEW_MODEL: 'glm-5.1',
+        AI_REVIEW_MODE: 'fast',
+        AI_REVIEW_SELECTED_FILES: '6',
+        AI_REVIEW_REVIEWABLE_FILES: '52',
+        AI_REVIEW_SELECTED_CHANGES: '640',
+        AI_REVIEW_REVIEWABLE_CHANGES: '2480',
+        AI_REVIEW_MAX_TURNS: '5',
+        AI_REVIEW_TIMEOUT_MINUTES: '5',
+        AI_REVIEW_STATUS: 'cancelled',
+        AI_REVIEW_OUTPUT_FILE: outputFile,
+        AI_REVIEW_RUN_URL: 'https://github.com/kaitranntt/ccs/actions/runs/23758377592',
+        AI_REVIEW_STRUCTURED_OUTPUT: '',
+      });
+
+      expect(result.usedFallback).toBe(true);
+
+      const markdown = fs.readFileSync(outputFile, 'utf8');
+      expect(markdown).toContain(
+        'The `fast` review hit the workflow runtime cap before it produced validated structured output. The run stayed bounded to 5 minutes.'
+      );
+      expect(markdown).toContain('- Review mode: `fast` (diff-focused bounded review)');
+      expect(markdown).toContain('- Review scope: 6/52 reviewable files; 640/2480 reviewable changed lines');
+      expect(markdown).toContain('- Runtime budget: 5 turns / 5 minutes');
+      expect(markdown).not.toContain('Partial draft that should never reach the published markdown.');
     });
   });
 
