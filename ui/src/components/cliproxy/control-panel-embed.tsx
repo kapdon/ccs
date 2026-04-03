@@ -162,6 +162,12 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
     };
   }, [checkUrl, isRemote, displayHost, cliproxyConfig]);
 
+  // In local mode, wait for authTokens to resolve before rendering the iframe.
+  // This prevents seeding localStorage with the fallback 'ccs' secret — management.html
+  // only reads these keys once during restoreSession() and the iframe isn't remounted
+  // when the real token arrives later.
+  const tokensReady = isRemote || authTokens !== undefined;
+
   // Pre-seed localStorage for management.html auto-login in local (proxied) mode.
   // management.html (same-origin via proxy) reads these keys on init via its
   // restoreSession flow: isLoggedIn + apiBase + managementKey → auto-login.
@@ -169,7 +175,7 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
   // because the iframe starts loading as soon as it's rendered — if we seed after
   // render, management.html's restoreSession() runs before the values are set.
   useMemo(() => {
-    if (isRemote || !authToken) return false;
+    if (isRemote || !authToken || !tokensReady) return;
 
     // management.html's apiBase = window.location origin + /v0/management
     // Since it's proxied through the dashboard, window.location is the dashboard origin.
@@ -185,7 +191,7 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
     } catch (e) {
       console.debug('[ControlPanelEmbed] Failed to pre-seed localStorage:', e);
     }
-  }, [isRemote, authToken]);
+  }, [isRemote, authToken, tokensReady]);
 
   // Handle iframe load - mark ready then let effect post credentials.
   const handleIframeLoad = useCallback(() => {
@@ -251,15 +257,17 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
           </div>
         )}
 
-        {/* Iframe */}
-        <iframe
-          key={`${managementUrl}:${iframeRevision}`}
-          ref={iframeRef}
-          src={managementUrl}
-          className="flex-1 w-full border-0"
-          title="CLIProxy Management Panel"
-          onLoad={handleIframeLoad}
-        />
+        {/* Iframe — deferred until auth tokens resolve to avoid seeding wrong credentials */}
+        {tokensReady && (
+          <iframe
+            key={`${managementUrl}:${iframeRevision}`}
+            ref={iframeRef}
+            src={managementUrl}
+            className="flex-1 w-full border-0"
+            title="CLIProxy Management Panel"
+            onLoad={handleIframeLoad}
+          />
+        )}
       </div>
     </div>
   );
