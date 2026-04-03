@@ -4,7 +4,11 @@
  * Proxies requests from the dashboard to the local CLIProxy service
  * running on 127.0.0.1 inside the same host/container.
  *
- * Mounted at: /api/cliproxy-local/*  ->  http://127.0.0.1:{port}/*
+ * Two routers are created:
+ *   default export — mounted at /api/cliproxy-local/*  ->  http://127.0.0.1:{port}/*
+ *   cliproxyV0Proxy — mounted at /v0/*  ->  http://127.0.0.1:{port}/v0/*
+ *     (management.html derives its API base from window.location, so its
+ *      calls to /v0/management/* need to reach CLIProxy with the /v0 prefix)
  */
 
 import http from 'http';
@@ -71,7 +75,17 @@ function buildProxyHeaders(
   return proxyHeaders;
 }
 
-export function createCliproxyLocalProxyRouter(deps: CliproxyLocalProxyDeps = {}): Router {
+/**
+ * Create a CLIProxy reverse proxy router.
+ *
+ * @param deps - Optional dependency overrides for testing.
+ * @param pathPrefix - Optional prefix to prepend to the target path.
+ *   Used by the /v0 mount to re-add the /v0 prefix that Express strips.
+ */
+export function createCliproxyLocalProxyRouter(
+  deps: CliproxyLocalProxyDeps = {},
+  pathPrefix = ''
+): Router {
   const router = Router();
   const enforceAccess =
     deps.enforceAccess ??
@@ -92,7 +106,7 @@ export function createCliproxyLocalProxyRouter(deps: CliproxyLocalProxyDeps = {}
 
   router.all('/*', (req: Request, res: Response) => {
     const targetPort = resolveTargetPort();
-    const targetPath = req.url || '/';
+    const targetPath = `${pathPrefix}${req.url || '/'}`;
     const bodyBuffer = buildProxyBody(req);
 
     const proxyReq = createRequest(
@@ -147,5 +161,8 @@ export function createCliproxyLocalProxyRouter(deps: CliproxyLocalProxyDeps = {}
 
   return router;
 }
+
+/** Mounted at /v0 — re-adds the /v0 prefix that Express strips. */
+export const cliproxyV0Proxy = createCliproxyLocalProxyRouter({}, '/v0');
 
 export default createCliproxyLocalProxyRouter();

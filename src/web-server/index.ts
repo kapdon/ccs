@@ -65,8 +65,11 @@ export async function startServer(options: ServerOptions): Promise<ServerInstanc
   app.use(authMiddleware);
 
   // CLIProxy local reverse proxy (avoids cross-origin issues in Docker)
-  const cliproxyLocalProxy = (await import('./routes/cliproxy-local-proxy')).default;
-  app.use('/api/cliproxy-local', cliproxyLocalProxy);
+  // /api/cliproxy-local/* serves management.html and other CLIProxy assets
+  // /v0/* forwards management.html's API calls (it derives apiBase from window.location)
+  const cliproxyProxy = await import('./routes/cliproxy-local-proxy');
+  app.use('/api/cliproxy-local', cliproxyProxy.default);
+  app.use('/v0', cliproxyProxy.cliproxyV0Proxy);
 
   // REST API routes (modularized)
   const { apiRoutes } = await import('./routes/index');

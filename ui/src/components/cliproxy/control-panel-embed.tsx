@@ -2,7 +2,8 @@
  * CLIProxy Control Panel Embed
  *
  * Embeds the CLIProxy management.html with auto-authentication.
- * Uses postMessage to inject credentials into the iframe.
+ * Local mode proxies through the dashboard (/cliproxy-local/* and /v0/*)
+ * so the browser never needs direct access to the CLIProxy port.
  * Supports both local and remote CLIProxy server connections.
  */
 
@@ -79,8 +80,10 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
       };
     }
 
-    // Local mode - proxy through dashboard server to avoid cross-origin/port issues
-    // (e.g., in Docker the browser cannot reach the internal CLIProxy port directly)
+    // Local mode - proxy through dashboard server so the browser never needs
+    // direct access to the CLIProxy port (important for Docker/remote deploys).
+    // management.html derives its API base from window.location, so the
+    // dashboard also proxies /v0/* to CLIProxy alongside /cliproxy-local/*.
     const effectiveSecret = authTokens?.managementSecret?.value || 'ccs';
     return {
       managementUrl: withApiBase('/cliproxy-local/management.html'),
@@ -159,50 +162,30 @@ export function ControlPanelEmbed({ port = CLIPROXY_DEFAULT_PORT }: ControlPanel
     };
   }, [checkUrl, isRemote, displayHost, cliproxyConfig]);
 
-  const postAutoLoginCredentials = useCallback(() => {
-    // Auto-login can only run when iframe has loaded and authToken is available.
-    if (!iframeLoaded || !iframeRef.current?.contentWindow || !authToken) {
-      return;
-    }
+  // Pre-seed localStorage for management.html auto-login in local (proxied) mode.
+  // management.html (same-origin via proxy) reads these keys on init via its
+  // restoreSession flow: isLoggedIn + apiBase + managementKey → auto-login.
+  // IMPORTANT: This must run synchronously during render (useMemo), NOT in useEffect,
+  // because the iframe starts loading as soon as it's rendered — if we seed after
+  // render, management.html's restoreSession() runs before the values are set.
+  useMemo(() => {
+    if (isRemote || !authToken) return false;
+
+    // management.html's apiBase = window.location origin + /v0/management
+    // Since it's proxied through the dashboard, window.location is the dashboard origin.
+    // The /v0/* proxy forwards these calls to CLIProxy.
+    const apiBase = `${window.location.origin}/v0/management`;
 
     try {
-      // Derive apiBase and targetOrigin from checkUrl.
-      // Local mode uses the same-origin dashboard proxy; remote mode stays absolute.
-      const apiBase = checkUrl.startsWith('/')
-        ? new URL(checkUrl.replace(/\/$/, ''), window.location.origin).href
-        : checkUrl.replace(/\/$/, '');
-      const apiBaseUrl = new URL(`${apiBase}/`);
-      const targetOrigin = apiBaseUrl.origin;
-
-      // Security: Validate iframe src matches the expected origin/path before sending credentials.
-      const iframeUrl = new URL(iframeRef.current.src, window.location.origin);
-      if (
-        iframeUrl.origin !== apiBaseUrl.origin ||
-        !iframeUrl.pathname.startsWith(apiBaseUrl.pathname)
-      ) {
-        console.warn('[ControlPanelEmbed] Iframe origin mismatch, skipping postMessage');
-        return;
-      }
-
-      // Send credentials to iframe
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: 'ccs-auto-login',
-          apiBase,
-          managementKey: authToken,
-        },
-        targetOrigin
-      );
+      // Set as plain strings — management.html's migratePlaintextKeys() picks up
+      // non-encrypted values and migrates them into its encrypted storage on init.
+      localStorage.setItem('apiBase', apiBase);
+      localStorage.setItem('managementKey', authToken);
+      localStorage.setItem('isLoggedIn', 'true');
     } catch (e) {
-      // Cross-origin restriction - expected if not same origin
-      console.debug('[ControlPanelEmbed] postMessage failed - cross-origin:', e);
+      console.debug('[ControlPanelEmbed] Failed to pre-seed localStorage:', e);
     }
-  }, [authToken, checkUrl, iframeLoaded]);
-
-  // Retry auto-login when token/checkUrl arrive after iframe onLoad.
-  useEffect(() => {
-    postAutoLoginCredentials();
-  }, [postAutoLoginCredentials]);
+  }, [isRemote, authToken]);
 
   // Handle iframe load - mark ready then let effect post credentials.
   const handleIframeLoad = useCallback(() => {
