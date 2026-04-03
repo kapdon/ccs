@@ -12,6 +12,7 @@ import path from 'path';
 import { WebSocketServer } from 'ws';
 import { setupWebSocket } from './websocket';
 import { createSessionMiddleware, authMiddleware } from './middleware/auth-middleware';
+import { isDashboardAuthEnabled } from '../config/unified-config-loader';
 import { startAutoSyncWatcher, stopAutoSyncWatcher } from '../cliproxy/sync';
 import { shutdownUsageAggregator } from './usage/aggregator';
 
@@ -66,10 +67,24 @@ export async function startServer(options: ServerOptions): Promise<ServerInstanc
 
   // CLIProxy local reverse proxy (avoids cross-origin issues in Docker)
   // /api/cliproxy-local/* serves management.html and other CLIProxy assets
-  // /v0/* forwards management.html's API calls (it derives apiBase from window.location)
+  // /v0/* forwards management.html's API calls (it derives apiBase from window.location,
+  //   hardcoding /v0/management as its API path — cannot be moved under /api/)
+  // Note: /v0 sits outside /api/* so authMiddleware's path check wouldn't cover it.
+  //   The proxy's own requireLocalAccessWhenAuthDisabled enforces localhost-only when
+  //   auth is off, and when auth is on we enforce the session check explicitly here.
   const cliproxyProxy = await import('./routes/cliproxy-local-proxy');
   app.use('/api/cliproxy-local', cliproxyProxy.default);
-  app.use('/v0', cliproxyProxy.cliproxyV0Proxy);
+  app.use(
+    '/v0',
+    (req, res, next) => {
+      if (isDashboardAuthEnabled() && !req.session?.authenticated) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+      next();
+    },
+    cliproxyProxy.cliproxyV0Proxy
+  );
 
   // REST API routes (modularized)
   const { apiRoutes } = await import('./routes/index');
